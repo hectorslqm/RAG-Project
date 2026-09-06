@@ -16,8 +16,7 @@ This project uses [mise](https://mise.jdx.dev/) for tool version management and 
 2. **Install uv** (Python package and project manager):
    https://docs.astral.sh/uv/getting-started/installation/
 
-3. **Install the project:**
-
+3. **Install the project
 ```bash
    mise trust       # trusts the tool versions defined in mise.toml
    mise install     # installs the tool versions defined in mise.toml
