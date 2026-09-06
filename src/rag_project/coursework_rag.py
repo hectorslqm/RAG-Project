@@ -292,9 +292,31 @@ class DatasetQuestion:
 
 class Dataset:
     """Dataset wrapper for loading contexts and questions.
-    - SQuAD v2 dataset by default. But can be configured to use other datasets as well.
-        - This dataset is composed by two subsets: "train" and "validation". We are using the "validation" subset by default.
-    - Seed for random number generation to ensure reproducibility. 42 by default.
+        - SQuAD v2 dataset by default. But can be configured to use other datasets as well.
+            - This dataset is composed by two subsets: "train" and "validation". We are using the "validation" subset by default.
+        - Seed for random number generation to ensure reproducibility. 42 by default.
+
+        See https://huggingface.co/datasets/rajpurkar/squad_v2 to explore the dataset.
+
+        @inproceedings{rajpurkar-etal-2018-know,
+        title = "Know What You Don{'}t Know: Unanswerable Questions for {SQ}u{AD}",
+        author = "Rajpurkar, Pranav  and
+          Jia, Robin  and
+          Liang, Percy",
+        editor = "Gurevych, Iryna  and
+          Miyao, Yusuke",
+        booktitle = "Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 2: Short Papers)",
+        month = jul,
+        year = "2018",
+        address = "Melbourne, Australia",
+        publisher = "Association for Computational Linguistics",
+        url = "https://aclanthology.org/P18-2124",
+        doi = "10.18653/v1/P18-2124",
+        pages = "784--789",
+        eprint={1806.03822},
+        archivePrefix={arXiv},
+        primaryClass={cs.CL}
+    }
     """
 
     def __init__(
@@ -506,11 +528,45 @@ Answer:"""
         )
 
 
-## %% ### SECTION 4: EVALUATION FRAMEWORK
+## %% ### SECTION 4: Evaluation
+import re
+import string
+from collections import Counter
+
+
+def _normalize_texts(text: str) -> str:
+    """Lowercase, strip punctuation and articles, and normalize whitespace.
+    E.G. "The CAR runs fast." -> "car runs fast"
+
+    Args:
+        text (str): _description_
+
+    Returns:
+        str: _description_
+    """
+    text = text.lower().strip()
+    text = "".join(
+        character for character in text if character not in string.punctuation
+    )
+    # Provided by claude.
+    # Remove articles (a, an, the) from the text.
+    text = re.sub(r"\b(a|an|the)\b", " ", text)
+
+    return " ".join(text.split())
+
+
+UNANSWERABLE_TOKEN = _normalize_texts(UNANSWERABLE_PHRASE)
 
 
 class RAGEvaluator:
-    """Evaluate a RAG system against test questions."""
+    """Evaluate a RAG system against test questions.
+
+    Adapted from the module notebook's RAGEvaluator: the substring-support
+    check was replaced with the official SQuAD v2 protocol (EM / token-F1,
+    max over reference answers, decline handling for unanswerable questions).
+
+    https://github.com/huggingface/evaluate/blob/main/metrics/squad_v2/squad_v2.py
+    """
 
     def __init__(self, rag_system: SimpleRAGSystem):
         self._rag_system = rag_system
