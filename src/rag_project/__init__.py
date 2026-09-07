@@ -29,8 +29,8 @@ class LLM:
         An instance of the LLM subclass corresponding to the specified provider.
     """
 
-    model: str
-    provider: ClassVar[str]
+    _model: str
+    _provider: ClassVar[str]
     _registry: ClassVar[dict[str, type["LLM"]]] = {}
 
     def generate(self, prompt: str) -> LLMResults:
@@ -52,7 +52,7 @@ class LLM:
         Registers the subclass in the LLM registry based on its provider attribute.
         """
         super().__init_subclass__(**kwargs)
-        if provider := getattr(cls, "provider", None):
+        if provider := getattr(cls, "_provider", None):
             LLM._registry[provider.upper()] = cls
 
     @staticmethod
@@ -71,7 +71,8 @@ class LLM:
             An instance of the LLM subclass corresponding to the specified provider.
         """
         try:
-            return LLM._registry[provider.upper()](model_name)
+            factory = LLM._registry[provider.upper()]
+            return factory(model_name) # type: ignore[call-arg]
         except KeyError:
             raise ValueError(f"Unsupported model provider: {provider}")
 
@@ -89,7 +90,7 @@ class OpenAILLM(LLM):
     """
 
     # Define the provider for the OpenAILLM class
-    provider: ClassVar[str] = "OPENAI"
+    _provider: ClassVar[str] = "OPENAI"
 
     API_KEY = os.getenv("OPENAI_API_KEY")
 
@@ -128,7 +129,7 @@ class NVidiaLLM(LLM):
     """
 
     # Define the provider for the NVidiaLLM class
-    provider: ClassVar[str] = "NVIDIA"
+    _provider: ClassVar[str] = "NVIDIA"
 
     NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
     API_KEY = os.getenv("NVIDIA_API_KEY")
@@ -151,7 +152,7 @@ class NVidiaLLM(LLM):
         latency = time.perf_counter() - start
         usage = getattr(response, "usage", None)
         return LLMResults(
-            text=response.choices[0].message.content,
+            text=response.choices[0].message.content or "",
             latency_s=latency,
             prompt_tokens=usage.prompt_tokens if usage else 0,
             completion_tokens=usage.completion_tokens if usage else 0,

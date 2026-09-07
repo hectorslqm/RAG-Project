@@ -9,11 +9,10 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "datasets>=5.0.1",
-    "ipykernel>=7.3.0",
+    "matplotlib>=3.11.1",
     "numpy>=2.5.2",
     "openai>=3.6.0",
     "pandas>=3.0.5",
-    "polars>=1.44.1",
     "python-dotenv>=1.2.3",
     "sentence-transformers>=6.0.0",
 ]
@@ -28,5 +27,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "ipykernel>=7.3.0",
+    "jupytext>=1.19.5",
+    "pandas-stubs>=3.0.5.260730",
     "ruff>=0.16.5",
 ]

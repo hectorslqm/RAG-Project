@@ -6,3 +6,6 @@ data/
 !.vscode/settings.json
 !.vscode/extensions.json
 !.env.example
+
+results/
+figures/

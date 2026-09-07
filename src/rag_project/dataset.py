@@ -45,12 +45,12 @@ class Dataset:
         # Create a QAPair for each row in the dataset and store it
         for row in self._dataset:
             question = Dataset_question(
-                id=row["id"],
-                question=row[QUESTION],
+                id=row["id"], # type: ignore
+                question=row[QUESTION], # type: ignore
                 # Remove duplicated answers while preserving order
-                answers=list(dict.fromkeys(row[ANSWERS][TEXT])),
-                # Store the corresponding id of the context in the corpus
-                context_id=self._context_to_id[row[CONTEXT]],
+                answers=list(dict.fromkeys(row[ANSWERS][TEXT])), # type: ignore
+                # Store the corresponding id of the context in the corpus 
+                context_id=self._context_to_id[row[CONTEXT]], # type: ignore
             )
             self._questions.append(question)
             self._questions_by_id[question.id] = question

@@ -1,4 +1,7 @@
-# %% ### SECTION 1: EMBEDDINGS AND VECTOR SEARCH
+# %% [markdown]
+# ## SECTION 1: EMBEDDINGS AND VECTOR SEARCH
+
+# %%
 import time
 from dataclasses import dataclass, field
 from typing import overload
@@ -92,7 +95,7 @@ class SimpleVectorDatabase:
         query_vec = self._embedding_model.embed(query)
 
         # Compute cosine similarity
-        similarities = np.dot(self._embeddings, query_vec)
+        similarities = np.dot(self._embeddings, query_vec)  # type: ignore
 
         # Get top_k indices
         top_indices = np.argsort(similarities)[-top_k:][::-1]
@@ -106,7 +109,10 @@ class SimpleVectorDatabase:
         return results
 
 
-# %% ### SECTION 2: LLM Models with two providers + SQuAD Dataset
+# %% [markdown]
+# ## SECTION 2: LLM Models with two providers + SQuAD Dataset
+
+# %%
 import os
 from typing import ClassVar
 
@@ -138,9 +144,13 @@ class LLM:
         An instance of the LLM subclass corresponding to the specified provider.
     """
 
-    model: str
     provider: ClassVar[str]
     _registry: ClassVar[dict[str, type["LLM"]]] = {}
+
+    @property
+    def model_name(self) -> str:
+        """Return the name of the model being used."""
+        return ""
 
     def generate(self, prompt: str) -> LLMResults:
         """Generates a response from the language model based on the given prompt.
@@ -180,7 +190,8 @@ class LLM:
             An instance of the LLM subclass corresponding to the specified provider.
         """
         try:
-            return LLM._registry[provider.upper()](model_name)
+            factory = LLM._registry[provider.upper()]
+            return factory(model_name)  # type: ignore[call-arg]
         except KeyError:
             raise ValueError(f"Unsupported model provider: {provider}")
 
@@ -191,7 +202,7 @@ class OpenAILLM(LLM):
     **IMPORTANT**:
         Make sure to set the OPENAI_API_KEY environment variable before using this class.
     Args:
-        model (str): The name of the OpenAI model to be used.
+        model_name (str): The name of the OpenAI model to be used.
 
     Returns:
         OpenAILLM: An instance of the OpenAILLM class initialized with the specified model.
@@ -202,14 +213,19 @@ class OpenAILLM(LLM):
 
     API_KEY = os.getenv("OPENAI_API_KEY")
 
-    def __init__(self, model: str):
+    def __init__(self, model_name: str):
         self._client = OpenAI(api_key=self.API_KEY)
-        self._model = model
+        self._model_name = model_name
+
+    @property
+    def model_name(self) -> str:
+        """Return the name of the model being used."""
+        return self._model_name
 
     def generate(self, prompt: str) -> LLMResults:
         start = time.perf_counter()
         response = self._client.responses.create(
-            model=self._model,
+            model=self._model_name,
             input=prompt,
             reasoning={"effort": "medium"},
         )
@@ -230,7 +246,7 @@ class NVidiaLLM(LLM):
         Make sure to set the NVIDIA_API_KEY environment variable before using this class.
 
     Args:
-        model (str): The name of the NVIDIA model to be used.
+        model_name (str): The name of the NVIDIA model to be used.
 
     Returns:
         NVidiaLLM: An instance of the NVidiaLLM class initialized with the specified model.
@@ -242,14 +258,19 @@ class NVidiaLLM(LLM):
     NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
     API_KEY = os.getenv("NVIDIA_API_KEY")
 
-    def __init__(self, model: str):
+    def __init__(self, model_name: str):
         self._client = OpenAI(base_url=self.NVIDIA_BASE_URL, api_key=self.API_KEY)
-        self._model = model
+        self._model_name = model_name
+
+    @property
+    def model_name(self) -> str:
+        """Return the name of the model being used."""
+        return self._model_name
 
     def generate(self, prompt: str) -> LLMResults:
         start = time.perf_counter()
         response = self._client.chat.completions.create(
-            model=self._model,
+            model=self._model_name,
             messages=[{"role": "user", "content": prompt}],
             # Limiting the range of randomness to make the output reproducible
             temperature=0,
@@ -260,14 +281,17 @@ class NVidiaLLM(LLM):
         latency = time.perf_counter() - start
         usage = getattr(response, "usage", None)
         return LLMResults(
-            answer=response.choices[0].message.content,
+            answer=response.choices[0].message.content or "",
             latency_s=latency,
             prompt_tokens=usage.prompt_tokens if usage else 0,
             completion_tokens=usage.completion_tokens if usage else 0,
         )
 
 
-# %% ## SECTION 2.1: SQuAD Dataset
+# %% [markdown]
+# ### SECTION 2.1: SQuAD Dataset
+
+# %%
 import random
 
 from datasets import load_dataset
@@ -331,6 +355,9 @@ class Dataset:
         TEXT = "text"
 
         # Load the specified split of the dataset and initialize the random number generator.
+        self._dataset_name = dataset
+        self._split = split
+        self._seed = seed
         self._dataset = load_dataset(dataset, split=split)
         self._random = random.Random(seed)
         # Corpus of unique contexts sorted in ascending order
@@ -343,17 +370,33 @@ class Dataset:
         # Create a QAPair for each row in the dataset and store it
         for row in self._dataset:
             question = DatasetQuestion(
-                id=row["id"],
-                question=row[QUESTION],
+                id=row["id"],  # type: ignore
+                question=row[QUESTION],  # type: ignore
                 # Remove duplicated answers while preserving order
-                answers=list(dict.fromkeys(row[ANSWERS][TEXT])),
+                answers=list(dict.fromkeys(row[ANSWERS][TEXT])),  # type: ignore
                 # Store the corresponding id of the context in the corpus
-                context_id=self._context_to_id[row[CONTEXT]],
+                context_id=self._context_to_id[row[CONTEXT]],  # type: ignore
             )
             self._questions.append(question)
             self._questions_by_id[question.id] = question
 
-    def get_corpus(self) -> list[str]:
+    @property
+    def dataset_name(self) -> str:
+        """Return the name of the dataset being used."""
+        return self._dataset_name
+
+    @property
+    def split(self) -> str:
+        """Return the split of the dataset being used."""
+        return self._split
+
+    @property
+    def seed(self) -> int:
+        """Return the seed used for random number generation."""
+        return self._seed
+
+    @property
+    def corpus(self) -> list[str]:
         """Return the list of unique contexts in the corpus."""
         return self._corpus
 
@@ -405,7 +448,10 @@ class Dataset:
         }
 
 
-# %% ### SECTION 3: RETRIEVAL-AUGMENTED GENERATION (RAG)
+# %% [markdown]
+# ## SECTION 3: RETRIEVAL-AUGMENTED GENERATION (RAG)
+
+# %%
 @dataclass
 class RAGResponse:
     """Container for RAG response with sources."""
@@ -487,7 +533,7 @@ Answer:"""
         ]
 
         return RAGResponse(
-            answer=answer,
+            answer=answer or "",
             sources=sources,
             context_used=[doc for doc, _, _ in retrieved],
             confidence=retrieved[0][1] if retrieved else 0.0,
@@ -528,7 +574,10 @@ Answer:"""
         )
 
 
-## %% ### SECTION 4: Evaluation
+# %% [markdown]
+# ## SECTION 4: Evaluation
+
+# %%
 import re
 import string
 from collections import Counter
@@ -543,19 +592,28 @@ def _normalize_texts(text: str) -> str:
 
     Returns:
         str: _description_
+        TODO: Investigate source to confirm if it is the standard squad normalization
     """
     text = text.lower().strip()
     text = "".join(
         character for character in text if character not in string.punctuation
     )
-    # Provided by claude.
+
     # Remove articles (a, an, the) from the text.
     text = re.sub(r"\b(a|an|the)\b", " ", text)
 
     return " ".join(text.split())
 
 
+# Normalized should look like: i dont have answer
 UNANSWERABLE_TOKEN = _normalize_texts(UNANSWERABLE_PHRASE)
+
+
+def clean_model_answer(raw: str | None) -> str:
+    """TODO:"""
+    if raw is None:
+        return ""
+    return raw.strip()
 
 
 class RAGEvaluator:
@@ -565,93 +623,799 @@ class RAGEvaluator:
     check was replaced with the official SQuAD v2 protocol (EM / token-F1,
     max over reference answers, decline handling for unanswerable questions).
 
-    https://github.com/huggingface/evaluate/blob/main/metrics/squad_v2/squad_v2.py
+    #TODO: See: https://github.com/huggingface/evaluate/blob/main/metrics/squad_v2/squad_v2.py
     """
 
-    def __init__(self, rag_system: SimpleRAGSystem):
-        self._rag_system = rag_system
+    @staticmethod
+    def is_declined(answer: str) -> bool:
+        """True if the model used the UNANSWERABLE_PHRASE"""
+        return UNANSWERABLE_TOKEN in _normalize_texts(answer)
 
-    # def evaluate(self, test_cases: list[dict]) -> dict:
-    #     """Evaluate RAG system on test cases.
+    @staticmethod
+    def _em_single(prediction: str, reference: str) -> float:
+        """Exact match between one prediction and one reference answer"""
+        return float(_normalize_texts(prediction) == _normalize_texts(reference))
 
-    #     Args:
-    #         test_cases: List of dictionaries with keys:
-    #             - question: str
-    #             - expected_answer: str (optional)
-    #             - should_be_found: bool (is the answer in the document set?)
-    #             - context: str (the expected source text)
+    @staticmethod
+    def _f1_single(prediction: str, reference: str) -> float:
+        """Token-overlap F1 between one prediction and one reference answer.
+        source: https://www.geeksforgeeks.org/machine-learning/f1-score-in-machine-learning/
+        """
+        prediction_tokens = _normalize_texts(prediction).split()
+        reference_tokens = _normalize_texts(reference).split()
+        if not prediction_tokens or not reference_tokens:
+            return float(prediction_tokens == reference_tokens)
+        # Compute the number of overlapping tokens between prediction and reference
+        common = Counter(prediction_tokens) & Counter(reference_tokens)
+        # Compute the overlap and calculate precision, recall, and F1 score
+        overlap = sum(common.values())
+        if overlap == 0:
+            return 0.0
+        precision = overlap / len(prediction_tokens)
+        recall = overlap / len(reference_tokens)
+        # Compute the F1 Score
+        return 2 * precision * recall / (precision + recall)
 
-    #     Returns:
-    #         Evaluation metrics
-    #     """
-    #     results = {
-    #         "total": len(test_cases),
-    #         "correct": 0,
-    #         "hallucinations": 0,
-    #         "citations_present": 0,
-    #         "details": [],
-    #     }
+    @classmethod
+    def evaluate_answer(cls, prediction: str, reference_answers: list[str]) -> dict:
+        """Evaluate a single answer against the reference answers.
+        Returns:
+            A dictionary with keys "em", "f1", and "declined". "em" and "f1" are float scores, "declined" is a boolean indicating if the model declined to answer.
+        """
+        prediction = clean_model_answer(prediction)
+        declined = cls.is_declined(prediction)
 
-    #     for case in test_cases:
-    #         response = self._rag_system.answer(case["question"])
+        if not reference_answers:  # unanswerable question
+            score = float(declined)
+            return {"em": score, "f1": score, "declined": declined}
 
-    #         # Check if the answer is supported by context
-    #         is_supported = self._check_support(response, case.get("context", ""))
+        if declined:  # declined an answerable question
+            return {"em": 0.0, "f1": 0.0, "declined": True}
 
-    #         # Check if the system correctly declined when answer not present
-    #         if not case.get("should_be_found", True):
-    #             is_correct = self._check_declined(response.answer)
-    #         else:
-    #             is_correct = is_supported
+        em = max(cls._em_single(prediction, ref) for ref in reference_answers)
+        f1 = max(cls._f1_single(prediction, ref) for ref in reference_answers)
+        return {"em": em, "f1": f1, "declined": False}
 
-    #         # Check for hallucinations (unsupported claims)
-    #         has_hallucination = not is_supported and case.get("should_be_found", True)
+    @classmethod
+    def is_supported_by_sources(
+        cls, prediction: str, used_contexts: list[str]
+    ) -> bool | None:
+        """Answer-supported-by-source rat.
+        Returns:
+            True if the normalized answer appears inside any context used, False if not. None when there is nothing to check (declined answers or plain runs with no RAG)
+        """
 
-    #         # Check if citations are present
-    #         has_citations = len(response.sources) > 0
+        prediction = clean_model_answer(prediction)
+        if not used_contexts or cls.is_declined(prediction):
+            return None
+        normalized_prediction = _normalize_texts(prediction)
+        if not normalized_prediction:
+            return None
 
-    #         if is_correct:
-    #             results["correct"] += 1
-    #         if has_hallucination:
-    #             results["hallucinations"] += 1
-    #         if has_citations:
-    #             results["citations_present"] += 1
+        # Compare whole words, not raw characters. A plain substring test
+        # matches inside longer words ("no" is found in "north"), which would
+        # inflate this rate: about 11% of SQuAD v2 answers are 4 characters
+        # or shorter, so the spurious matches are not a rare edge case.
+        prediction_tokens = normalized_prediction.split()
 
-    #         results["details"].append(
-    #             {
-    #                 "question": case["question"],
-    #                 "answer": response.answer,
-    #                 "is_correct": is_correct,
-    #                 "has_hallucination": has_hallucination,
-    #                 "has_citations": has_citations,
-    #                 "sources": response.sources,
-    #             }
-    #         )
+        def _contains(context: str) -> bool:
+            context_tokens = _normalize_texts(context).split()
+            n = len(prediction_tokens)
+            return any(
+                context_tokens[i : i + n] == prediction_tokens
+                for i in range(len(context_tokens) - n + 1)
+            )
 
-    #     # Compute metrics
-    #     results["accuracy"] = results["correct"] / results["total"]
-    #     results["citation_rate"] = results["citations_present"] / results["total"]
+        return any(_contains(context) for context in used_contexts)
 
-    #     return results
 
-    # def _check_support(self, response: RAGResponse, expected_context: str) -> bool:
-    #     """Check if the answer is supported by the retrieved context."""
-    #     if not expected_context:
-    #         return True  # No expected context to check
+# %% [markdown]
+# ## SECTION 5: Build Experiment
 
-    #     # Simplified check: does the answer mention content from context?
-    #     # In practice, use more sophisticated methods
-    #     return any(
-    #         expected_context.lower() in doc.lower() for doc in response.context_used
-    #     )
+# %%
+import json
+from dataclasses import asdict
+from pathlib import Path
 
-    # def _check_declined(self, answer: str) -> bool:
-    #     """Check if the system correctly declined to answer."""
-    #     decline_phrases = [
-    #         "i don't know",
-    #         "cannot answer",
-    #         "not provided",
-    #         "not available",
-    #         "i cannot",
-    #     ]
-    #     return any(phrase in answer.lower() for phrase in decline_phrases)
+
+@dataclass
+class ExperimentResult:
+    """Container for a single experiment result."""
+
+    llm_model: str
+    config: str
+    seed: int
+    question_id: str
+    is_answerable: bool
+    answer: str
+    em: float
+    f1: float
+    declined: bool
+    retrieval_hit: bool | None
+    supported_by_source: bool | None
+    retrieved_ids: list[int]
+    top_similarity: float
+    latency_s: float
+    prompt_tokens: int
+    completion_tokens: int
+
+
+class Experiment:
+    """Package the experiment configuration and results in a single object."""
+
+    def __init__(self):
+        self._embedding_model = EmbeddingModel()
+        self._records: list[ExperimentResult] = []
+
+    def _read_processed_pairs(self, results_file: Path) -> set[tuple[str, str, str]]:
+        """Return a list of tuples (llm_model, config, question_id) from the processed results"""
+        done = set()
+        if results_file.exists():
+            with open(results_file) as f:
+                for line in f:
+                    record = json.loads(line)
+                    done.add(
+                        (record["llm_model"], record["config"], record["question_id"])
+                    )
+        return done
+
+    @property
+    def records(self) -> list[ExperimentResult]:
+        """Return the list of experiment records."""
+        return self._records
+
+    def clear_records(self, results_file: Path, seed: int):
+        """Clear records for this seed and remove its results file if it exists."""
+        self._records = [r for r in self._records if r.seed != seed]
+        if results_file.exists():
+            results_file.unlink()
+
+    def run_experiment(
+        self,
+        dataset: Dataset,
+        llms: list[LLM],
+        seed: int,
+        n_questions: int,
+        top_k_values: list[int | None],
+        results_path: Path = Path("results"),
+        replace_existing: bool = False,
+    ):
+        """Run the experiment with the given configuration and save results to a file.
+        dataset: Dataset object containing the questions and contexts
+        llms: List of LLM objects to be evaluated
+        seed: Random seed for reproducibility
+        n_questions: Number of questions to sample from the dataset for evaluation
+        top_k_values: List of top_k values for retrieval. Use None to include the NoRAG baseline in the experiment.
+        results_path: Path to the directory where results will be saved. Defaults to "results".
+        replace_existing: If True, clear existing records for this seed and remove the results file if it exists.
+        """
+        results_path.mkdir(exist_ok=True)
+        # Initialize the vector database, and add documents from the dataset's corpus. with the given seed
+        vector_db = SimpleVectorDatabase(self._embedding_model)
+        vector_db.add_documents(dataset.corpus)
+        # Retrieve a random sample of questions from the dataset.
+        questions = dataset.get_questions(n=n_questions)
+        # Create the results file path and check for already completed evaluations to avoid redundant computations.
+        results_file = results_path / f"results_seed{seed}.jsonl"
+
+        # If replace_existing is True, clear existing records for this seed and remove the results file if it exists.
+        # Otherwise, read already processed pairs from the results file to skip them during evaluation.
+        if replace_existing:
+            self.clear_records(results_file, seed)
+            processed = set()
+        else:
+            processed = self._read_processed_pairs(results_file)
+
+        print("=" * 60)
+        print(f"Running experiment with seed {seed}, {len(questions)} questions.")
+        print(f"Dataset: {dataset.dataset_name}, Split: {dataset.split}, Seed: {seed}")
+        with open(results_file, "a") as f:
+            for top_k in top_k_values:
+                for llm in llms:
+                    print(
+                        f"RAG With Top-k retrieval: {top_k if top_k is not None else 'Plain Prompting (No RAG)'}"
+                    )
+                    print(f"LLM model: {llm.model_name}")
+
+                    model_name = llm.model_name
+                    # Initialize the system. If top_k is None, use NoRAG; otherwise, use SimpleRAGSystem with the specified top_k.
+                    if top_k is not None:
+                        config = f"rag_k-{top_k}"
+                        # Initialize the RAG System with the current LLM model and vector database
+                        system = SimpleRAGSystem(vector_db, llm_model=llm)
+                    else:
+                        config = "plain"
+                        system = NoRAG(llm_model=llm)
+
+                    for i, question in enumerate(questions, start=1):
+                        # Check if the current configuration and question ID have already been evaluated to avoid redundant computations.
+                        if (model_name, config, question.id) in processed:
+                            continue
+
+                        if isinstance(system, SimpleRAGSystem) and top_k is not None:
+                            response = system.answer(question.question, top_k=top_k)
+                            retrieved_ids = [
+                                source["metadata"]["id"] for source in response.sources
+                            ]
+
+                            retrieval_hit = question.context_id in retrieved_ids
+                        else:
+                            response = system.answer(question.question)
+                            retrieved_ids = [
+                                source["metadata"]["id"] for source in response.sources
+                            ]
+
+                            retrieval_hit = None
+
+                        answer = clean_model_answer(response.answer)
+                        metrics = RAGEvaluator.evaluate_answer(answer, question.answers)
+
+                        supported = RAGEvaluator.is_supported_by_sources(
+                            response.answer, response.context_used
+                        )
+                        if response.llm_results:
+                            latency_s = response.llm_results.latency_s
+                            prompt_tokens = response.llm_results.prompt_tokens
+                            completion_tokens = response.llm_results.completion_tokens
+                        else:
+                            latency_s = 0.0
+                            prompt_tokens = 0
+                            completion_tokens = 0
+
+                        record = ExperimentResult(
+                            llm_model=model_name,
+                            config=config,
+                            seed=seed,
+                            question_id=question.id,
+                            is_answerable=question.is_answerable,
+                            answer=answer,
+                            em=metrics["em"],
+                            f1=metrics["f1"],
+                            declined=metrics["declined"],
+                            retrieval_hit=retrieval_hit,
+                            supported_by_source=supported,
+                            retrieved_ids=retrieved_ids,
+                            top_similarity=response.confidence,  # raw cosine sim
+                            latency_s=latency_s,
+                            prompt_tokens=prompt_tokens,
+                            completion_tokens=completion_tokens,
+                        )
+                        self._records.append(record)
+                        f.write(json.dumps(asdict(record)) + "\n")
+                        f.flush()  # persist immediately
+                        # Print progress and metrics for the current question, including the exact match (em), F1 score (f1), retrieval hit status, latency, and a truncated version of the answer.
+                        print(
+                            f"  [{i:>3}/{len(questions)}] em={metrics['em']:.0f} "
+                            f"f1={metrics['f1']:.2f} hit={retrieval_hit} latency={latency_s:>5.1f}s | {answer[:20]}..."
+                        )
+                    print(f"{config}: Processed")
+
+
+# %% [markdown]
+# ## SECTION 6: Run the experiment
+
+# %%
+
+# Initialize a LLM factory
+llm = LLM()
+## Create instances of the LLMs to be used in the experiment
+muse_glimmer = LLM.create("NVIDIA", "meta/muse-glimmer-30b")
+gpt_mini = LLM.create("OPENAI", "gpt-5.4-mini")
+QUESTIONS_PER_SEED = 100
+SEEDS = (42, 43, 44)
+experiment = Experiment()
+for seed in SEEDS:
+    dataset = Dataset(dataset="rajpurkar/squad_v2", split="validation", seed=seed)
+    experiment.run_experiment(
+        dataset=dataset,
+        llms=[gpt_mini, muse_glimmer],
+        seed=seed,
+        n_questions=QUESTIONS_PER_SEED,
+        top_k_values=[None, 1, 5, 10],
+        results_path=Path("results"),
+        replace_existing=True,
+    )
+
+
+# %% [markdown]
+# ### Section 6.1: Load results for post-processing and analysis
+
+# %%
+
+
+def load_results(results_dir: Path) -> list[ExperimentResult]:
+    """Read every seed file into one flat list of records."""
+    records = []
+    for path in sorted(results_dir.glob("results_seed*.jsonl")):
+        with open(path) as f:
+            records.extend(
+                ExperimentResult(**json.loads(line)) for line in f if line.strip()
+            )
+    return records
+
+
+LOAD_FROM_FILE = True  # Set to True to load results from file instead of using the in-memory records from the experiment run above.
+if LOAD_FROM_FILE and Path("results").exists():
+    results = load_results(Path("results"))
+    print(f"Loaded {len(results)} records from results directory.")
+else:
+    results = experiment.records
+    print(f"Using {len(results)} records from the in-memory experiment run.")
+
+# %% [markdown]
+# ## SECTION 7: Post-processing and Analysis
+
+# %% [markdown]
+# ### SECTION 7.1: Build the analysis DataFrame
+
+# %%
+import matplotlib.pyplot as plt
+import pandas as pd
+
+# Answers scoring at or above this F1 count as "correct" wherever the analysis
+# needs a yes/no split (the grounding cross-tab and the similarity histogram).
+# EM is too strict for that job: a right answer carrying one extra word scores
+# EM = 0 but F1 ~ 0.9, and would be filed as a failure.
+CORRECT_F1_THRESHOLD = 0.5
+
+
+def results_to_frame(results: list[ExperimentResult]) -> pd.DataFrame:
+    """Turn the experiment records into the table the whole analysis reads from.
+
+    Everything below this point becomes column arithmetic instead of nested
+    loops, so each aggregation reads as the thing it computes.
+
+    Three decisions are made here on purpose, once, instead of in every
+    function downstream:
+
+    - `retrieval_hit` and `supported_by_source` become pandas' nullable
+      "boolean" dtype. In this experiment None means "not applicable" (the
+      model declined, or it was a plain run with nothing retrieved) and NOT
+      False. The nullable dtype keeps that difference, so `.mean()` skips
+      those rows rather than counting them as zeros - which is exactly the
+      mistake that would make a cautious model look good.
+    - `config` becomes an *ordered* category, so every groupby, table and
+      plot comes out as plain, rag_k-1, rag_k-5, rag_k-10 without anyone
+      having to sort it again. Sorting the labels as text would put
+      "rag_k-10" before "rag_k-5".
+    - `correct`, `total_tokens` and `top_k` are derived once here.
+    """
+    frame = pd.DataFrame([asdict(r) for r in results])
+    if frame.empty:
+        return frame
+
+    for column in ("retrieval_hit", "supported_by_source"):
+        frame[column] = frame[column].astype("boolean")
+
+    frame["correct"] = frame["f1"] >= CORRECT_F1_THRESHOLD
+    frame["total_tokens"] = frame["prompt_tokens"] + frame["completion_tokens"]
+    # "rag_k-10" -> 10. The plain baseline has no k, so it stays missing,
+    # which is also what sorts it to the front below.
+    frame["top_k"] = (
+        frame["config"].str.extract(r"-(\d+)$", expand=False).astype("Int64")
+    )
+
+    ordered_configs = (
+        frame[["config", "top_k"]]
+        .drop_duplicates()
+        .sort_values("top_k", na_position="first")["config"]
+        .tolist()
+    )
+    frame["config"] = pd.Categorical(
+        frame["config"], categories=ordered_configs, ordered=True
+    )
+    return frame
+
+
+def config_order(frame: pd.DataFrame) -> list[str]:
+    """Configurations present in the data, in reading order."""
+    return list(frame["config"].cat.categories)
+
+
+def model_order(frame: pd.DataFrame) -> list[str]:
+    """Models present in the data, in a stable order."""
+    return sorted(frame["llm_model"].unique())
+
+
+def seed_order(frame: pd.DataFrame) -> list[int]:
+    """Seeds present in the data."""
+    return sorted(int(seed) for seed in frame["seed"].unique())
+
+
+def top_k_values(frame: pd.DataFrame) -> list[int]:
+    """The retrieval depths that were actually run."""
+    return sorted(int(k) for k in frame["top_k"].dropna().unique())
+
+
+def _mean_per_seed(
+    frame: pd.DataFrame,
+    model: str,
+    config: str,
+    metric: str,
+    subset: bool | None = None,
+) -> list[float]:
+    """One mean per seed, for one model under one configuration.
+
+    Each seed is a separate sample of 100 questions, so the seed is the unit
+    we average and take the spread over. Averaging all 300 answers together
+    would understate how much the score moves between samples.
+
+    subset: True for answerable questions only, False for unanswerable only,
+    None for both. Seeds where the metric is missing everywhere drop out
+    instead of contributing a zero.
+    """
+    rows = frame[(frame["llm_model"] == model) & (frame["config"] == config)]
+    if subset is not None:
+        rows = rows[rows["is_answerable"] == subset]
+    per_seed = rows.groupby("seed", observed=True)[metric].mean().dropna()
+    return [float(value) for value in per_seed]
+
+
+# %% [markdown]
+# ### SECTION 7.2: Plotting functions for analysis
+
+# %%
+
+
+class Plot:
+    """A class to encapsulate plotting functions for RAG experiment results."""
+
+    # Define a set of colors for plotting different series in the analysis.
+    # And keep consistent with the colors used in the notebook for visual clarity and comparison.
+    SERIES_COLORS = ("#1b71af", "#ff0e62", "#0da70d", "#d1d408df", "#9467bd")
+
+    def __init__(self, frame: pd.DataFrame, figure_path: Path = Path("figures")):
+        self._frame = frame
+        self._figure_path = figure_path
+
+        # Update matplotlib's rcParams to customize the appearance of plots, including grid lines, colors, and other visual elements for better readability and aesthetics.
+        plt.rcParams.update(
+            {
+                "axes.grid": True,
+                "axes.grid.axis": "y",
+                "grid.color": "#e5e4e0",
+                "grid.linewidth": 0.8,
+                "axes.axisbelow": True,
+                "axes.spines.top": False,
+                "axes.spines.right": False,
+                "axes.edgecolor": "#b8b7b2",
+                "axes.labelcolor": "#52514e",
+                "text.color": "#0b0b0b",
+                "xtick.color": "#52514e",
+                "ytick.color": "#52514e",
+                "figure.facecolor": "#fcfcfb",
+                "axes.facecolor": "#fcfcfb",
+            }
+        )
+
+    def plot_metric_by_config(
+        self,
+        frame: pd.DataFrame,
+        metric: str = "f1",
+        subset: bool | None = None,
+        filename: str | None = None,
+    ) -> None:
+        """Grouped bars: one group per configuration, one bar per model.
+
+        Error bars are the standard deviation across seeds, so they show how much
+        the score moves when you resample the questions.
+        """
+        self._figure_path.mkdir(exist_ok=True)
+        configs = config_order(frame)
+        models = model_order(frame)
+
+        subset_label = {
+            None: "",
+            True: " - answerable only",
+            False: " - unanswerable only",
+        }[subset]
+
+        x = np.arange(len(configs))
+        width = 0.8 / len(models)
+
+        fig, ax = plt.subplots(figsize=(8, 4.5))
+        top = 0.0
+        for i, model in enumerate(models):
+            means, stds = [], []
+            for config in configs:
+                per_seed = _mean_per_seed(frame, model, config, metric, subset)
+                means.append(float(np.mean(per_seed)) if per_seed else 0.0)
+                stds.append(float(np.std(per_seed)) if per_seed else 0.0)
+
+            # 2px gap between adjacent bars so the fills never touch
+            offset = (i - (len(models) - 1) / 2) * width
+            bars = ax.bar(
+                x + offset,
+                means,
+                width * 0.92,
+                yerr=stds,
+                capsize=3,
+                label=model,
+                color=self.SERIES_COLORS[i % len(self.SERIES_COLORS)],
+                error_kw={"ecolor": "#52514e", "elinewidth": 1},
+            )
+            # Direct labels: identity is never carried by colour alone. Sit them
+            # above the error bar, not the bar, so the two never overlap.
+            for bar, mean, std in zip(bars, means, stds):
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    mean + std + 0.02,
+                    f"{mean:.2f}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                    color="#52514e",
+                )
+                top = max(top, mean + std)
+
+        n_seeds = len(seed_order(frame))
+        ax.set_xticks(x, configs)
+        ax.set_ylabel(f"mean {metric.upper()}")
+        # Leave room for the labels; never clip an error bar that runs past 1.0
+        ax.set_ylim(0, max(1.05, top + 0.12))
+        ax.set_title(
+            f"{metric.upper()} by configuration{subset_label}\n"
+            f"mean ± std across {n_seeds} seed(s)",
+            fontsize=11,
+            loc="left",
+        )
+        ax.legend(frameon=False, fontsize=9)
+        fig.tight_layout()
+
+        name = filename or f"{metric}{subset_label.replace(' ', '_')}_by_config.png"
+        fig.savefig(self._figure_path / name, dpi=150)
+        plt.show()
+
+    def plot_retrieval_hit_rate(self, frame: pd.DataFrame) -> None:
+        """Line: share of questions whose own context made it into the top-k.
+
+        Retrieval runs before the LLM and uses the same embeddings for both
+        models, so this curve is a property of the retriever alone. Rows are
+        de-duplicated by (seed, top_k, question) so a question is not counted
+        once per model.
+        """
+        self._figure_path.mkdir(exist_ok=True)
+        rag = frame[frame["config"] != "plain"].dropna(subset=["retrieval_hit"])
+        if rag.empty:
+            print("No retrieval records to plot.")
+            return
+
+        per_question = rag.drop_duplicates(subset=["seed", "top_k", "question_id"])
+        # Mean within each seed first, then across seeds: the seed is the
+        # sampling unit, so a seed with fewer questions must not weigh less.
+        by_k = (
+            per_question.groupby(["top_k", "seed"], observed=True)["retrieval_hit"]
+            .mean()
+            .groupby("top_k", observed=True)
+            .mean()
+        )
+        ks = [int(k) for k in by_k.index]
+        rates = [float(rate) for rate in by_k]
+
+        fig, ax = plt.subplots(figsize=(6.5, 4))
+        ax.plot(
+            ks,
+            rates,
+            marker="o",
+            linewidth=2,
+            markersize=8,
+            color=self.SERIES_COLORS[0],
+        )
+        for k, rate in zip(ks, rates):
+            ax.text(
+                k, rate + 0.03, f"{rate:.3f}", ha="center", fontsize=9, color="#52514e"
+            )
+        ax.set_xlabel("top_k")
+        ax.set_ylabel("retrieval hit-rate")
+        ax.set_ylim(0, 1.12)
+        ax.set_xticks(ks)
+        # A single series needs no legend box - the title names it
+        ax.set_title("Retrieval hit-rate vs top_k", fontsize=11, loc="left")
+        fig.tight_layout()
+        fig.savefig(self._figure_path / "retrieval_hit_rate.png", dpi=150)
+        plt.show()
+
+    def plot_similarity_distribution(self, frame: pd.DataFrame) -> None:
+        """Histogram of top-1 similarity for correct vs incorrect RAG answers.
+
+        Motivates (or rules out) a similarity threshold as a second tuning axis:
+        if wrong answers cluster at low similarity, declining below a cut-off
+        would help without ever calling the LLM.
+        """
+        self._figure_path.mkdir(exist_ok=True)
+        rag = frame[frame["config"] != "plain"]
+        correct = rag.loc[rag["correct"], "top_similarity"].tolist()
+        incorrect = rag.loc[~rag["correct"], "top_similarity"].tolist()
+
+        values = correct + incorrect
+        if not values:
+            print("No RAG answers to plot.")
+            return
+
+        # Bin over the range the data actually occupies. Cosine similarity is
+        # bounded 0-1, but retrieved passages cluster in a narrow band, so a
+        # fixed 0-1 axis spends most of its width on empty space.
+        low, high = min(values), max(values)
+        pad = max((high - low) * 0.05, 0.01)
+        bins = np.linspace(low - pad, high + pad, 21).tolist()
+
+        fig, ax = plt.subplots(figsize=(7, 4))
+        # Draw the two groups side by side inside each bin rather than as two
+        # translucent layers: overlapping fills mix into a third colour that
+        # reads as a category of its own but means nothing. rwidth leaves a
+        # gap so the paired bars never touch.
+        ax.hist(
+            [correct, incorrect],
+            bins=bins,
+            density=True,
+            rwidth=0.85,
+            label=[f"F1 >= {CORRECT_F1_THRESHOLD}", f"F1 < {CORRECT_F1_THRESHOLD}"],
+            color=[self.SERIES_COLORS[0], self.SERIES_COLORS[1]],
+        )
+        ax.set_xlabel("top-1 cosine similarity")
+        # Each group is normalised on its own, so the two shapes stay
+        # comparable even though far more answers are correct than incorrect.
+        ax.set_ylabel("density (each group normalised separately)")
+        ax.set_title(
+            "Retrieval similarity: correct vs incorrect answers",
+            fontsize=11,
+            loc="left",
+        )
+        ax.legend(frameon=False, fontsize=9)
+        fig.tight_layout()
+        fig.savefig(self._figure_path / "similarity_distribution.png", dpi=150)
+        plt.show()
+
+
+# %% [markdown]
+# ### SECTION 7.3: Summary tables for analysis
+
+# %%
+
+# What each quadrant of the grounding cross-tab means, so the table can be
+# read without going back to the docstring.
+GROUNDING_MEANING = {
+    (True, True): "grounded and right",
+    (True, False): "copied the wrong passage",
+    (False, True): "right but reworded (metric blind spot)",
+    (False, False): "invented (hallucination)",
+}
+
+
+def summary_table(frame: pd.DataFrame) -> pd.DataFrame:
+    """Every metric named in the brief, one row per model and configuration.
+
+    Returned as a DataFrame rather than printed, so Jupyter renders it as a
+    real table and the numbers can go straight into the report.
+
+    decline_P / decline_R treat "the question is unanswerable" as the positive
+    class: precision is how often a decline was justified, recall is how many
+    of the unanswerable questions the model actually declined.
+
+    `hit` and `in_ctx` average nullable columns, so their denominators are
+    only the rows where the metric applies - declines and plain runs are
+    missing by design, not zero.
+    """
+    flagged = frame.assign(
+        decline_tp=frame["declined"] & ~frame["is_answerable"],
+        decline_fp=frame["declined"] & frame["is_answerable"],
+        decline_fn=~frame["declined"] & ~frame["is_answerable"],
+    )
+
+    table = flagged.groupby(["llm_model", "config"], observed=True).agg(
+        EM=("em", "mean"),
+        F1=("f1", "mean"),
+        hit=("retrieval_hit", "mean"),
+        in_ctx=("supported_by_source", "mean"),
+        _tp=("decline_tp", "sum"),
+        _fp=("decline_fp", "sum"),
+        _fn=("decline_fn", "sum"),
+        lat_s=("latency_s", "mean"),
+        tokens=("total_tokens", "mean"),
+    )
+
+    # 0/0 gives NaN, which is the honest answer when a model never declined
+    # (no precision to report) or every question was answerable (no recall).
+    table["decline_P"] = table["_tp"] / (table["_tp"] + table["_fp"])
+    table["decline_R"] = table["_tp"] / (table["_tp"] + table["_fn"])
+
+    columns = ["EM", "F1", "hit", "in_ctx", "decline_P", "decline_R", "lat_s", "tokens"]
+    return table[columns].astype(float).round(3)
+
+
+def grounding_breakdown(frame: pd.DataFrame) -> pd.DataFrame:
+    """Cross-tab of "copied from the context" against "answered correctly".
+
+    `supported_by_source` on its own says whether the answer text appears in
+    the retrieved documents - that is copying, not correctness. Crossed with
+    F1 it separates the two failure modes, which have different fixes:
+
+      copied + wrong     -> the retrieved passage was misread or was a distractor
+      not copied + wrong -> the model ignored the context and invented an answer
+
+    Only RAG answers that were actually given are counted. `scored` and
+    `declined` are repeated on every row on purpose: `share` is out of the
+    answers a model chose to give, so the shares are NOT comparable across
+    models until you can see how many each one declined. A model that answers
+    twice and copies well both times shows 100% here.
+    """
+    attempted = frame[frame["config"] != "plain"]
+    scored = attempted.dropna(subset=["supported_by_source"])
+    if scored.empty:
+        return pd.DataFrame()
+
+    # Safe after dropna, and it turns the nullable boolean into a plain one
+    # so the quadrant lookup below matches on real True / False.
+    scored = scored.assign(copied=scored["supported_by_source"].astype(bool))
+
+    counts = scored.groupby(["llm_model", "copied", "correct"], observed=True).size()
+    # Give every model all four quadrants, including the ones with no cases:
+    # a zero in "invented (hallucination)" is a result worth showing.
+    quadrants = pd.MultiIndex.from_product(
+        [sorted(scored["llm_model"].unique()), [True, False], [True, False]],
+        names=["llm_model", "copied", "correct"],
+    )
+    table = counts.reindex(quadrants, fill_value=0).rename("n").reset_index()
+
+    n_scored = scored.groupby("llm_model", observed=True).size()
+    n_attempted = attempted.groupby("llm_model", observed=True).size()
+    table["scored"] = table["llm_model"].map(n_scored)
+    table["declined"] = table["llm_model"].map(n_attempted - n_scored)
+    table["share"] = (table["n"] / table["scored"]).round(3)
+    table["failure_mode"] = [
+        GROUNDING_MEANING[(copied, correct)]
+        for copied, correct in zip(table["copied"], table["correct"])
+    ]
+
+    return table.set_index(["llm_model", "copied", "correct"])[
+        ["n", "share", "scored", "declined", "failure_mode"]
+    ]
+
+
+def find_failure_examples(frame: pd.DataFrame, n: int = 5) -> pd.DataFrame:
+    """Hallucination candidates for the report: answers invented for
+    questions that have no answer (the system did not decline)."""
+    failures = frame[~frame["is_answerable"] & ~frame["declined"]]
+    columns = ["llm_model", "config", "question_id", "top_similarity", "answer"]
+    return failures[columns].head(n)
+
+
+# %% [markdown]
+# ## SECTION 8: Run the analysis and generate plots
+
+# %%
+results_frame = results_to_frame(results)
+print(
+    f"{len(results_frame)} records | models: {model_order(results_frame)} "
+    f"| configs: {config_order(results_frame)} | seeds: {seed_order(results_frame)}"
+)
+
+# %% [markdown]
+# ### SECTION 8.1: Summary of every metric in the brief
+
+# %%
+summary_table(results_frame)
+
+# %% [markdown]
+# ### SECTION 8.2: Where the grounded answers went wrong
+
+# %%
+grounding_breakdown(results_frame)
+
+# %% [markdown]
+# ### SECTION 8.3: Figures
+
+# %%
+plot = Plot(results_frame)
+plot.plot_metric_by_config(results_frame, "f1")
+plot.plot_metric_by_config(results_frame, "em")
+plot.plot_metric_by_config(results_frame, "f1", subset=True)
+plot.plot_metric_by_config(results_frame, "f1", subset=False)
+plot.plot_retrieval_hit_rate(results_frame)
+plot.plot_similarity_distribution(results_frame)
+
+# %% [markdown]
+# ### SECTION 8.4: Concrete failures to quote in the report
+
+# %%
+find_failure_examples(results_frame)
