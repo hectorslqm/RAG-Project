@@ -1,5 +1,193 @@
 # %% [markdown]
+# # Evaluation of a Retrieval-Augmented Generation (RAG) system using "gpt-5.4-mini" and "muse-glimmer-30b" models on SQuAD V2 Dataset. Principles of Machine Learning (7WCM2032) Coursework
+#
+# **Student Name**: Hector S. Lazcano Quintero Marmol  
+# **Student ID**: 25054284
+#
+# # Copyright and Licensing
+#
+# ##
+#
+# This Jupyter notebook is provided by Hector S. Lazcano Quintero Marmol for educational purposes. You are free to use, share, and modify the contents of this notebook under the following conditions:
+#
+# - **Attribution**: You must give appropriate credit, provide a link to the original source, and indicate if changes were made. You may do so in any reasonable manner, but not in any way that suggests the author or the University of Hertfordshire endorses you or your use.
+#
+#   **Suggested Attribution**:
+#
+#   This notebook was originally created by Hector Samuel Lazcano Quintero Marmol for the Principles of Machine Learning Module (7WCM2032) using as a starting point of reference the `Unit4_LLMs-1.ipynb`, Principles of Machine Learning (7WCM2032), University of Hertfordshire, 2024. Providing the correct attributions.
+#
+# ## Course material — Manal Helal, University of Hertfordshire
+#
+# © 2024 Manal Helal, University of Hertfordshire
+#
+# This Jupyter notebook is provided by Manal Helal, a lecturer at the University of Hertfordshire, for educational purposes. You are free to use, share, and modify the contents of this notebook under the following conditions:
+#
+# 1. **Attribution**: You must give appropriate credit, provide a link to the original source, and indicate if changes were made. You may do so in any reasonable manner, but not in any way that suggests the lecturer or the University of Hertfordshire endorses you or your use.
+#
+#    **Suggested Attribution**:
+#
+#    This notebook was originally created by Manal Helal, University of Hertfordshire for the Principles of Machine Learning Module (7WCM2032) 2024.
+#
+# 2. **No Warranty**: The content of this notebook is provided "as-is," without warranty of any kind. The lecturer and the University of Hertfordshire make no representations or warranties, either express or implied, as to the accuracy, reliability, or completeness of the information provided herein.
+#
+# 3. **Limited Liability**: In no event shall the lecturer or the University of Hertfordshire be liable for any damages arising from the use of, or inability to use, the contents of this notebook, including but not limited to damages for loss of data, loss of profits, or interruption of business, even if advised of the possibility of such damages.
+#
+# 4. **Environment and Compatibility**: This notebook has been developed and tested in a specific environment. The lecturer and the University of Hertfordshire cannot guarantee that the notebook will function as expected in different environments. Users are responsible for ensuring compatibility and for addressing any issues that may arise.
+#
+# For any questions or further information, please contact Manal Helal at m.helal@herts.ac.uk
+#
+# ### Attribution and record of changes
+#
+# Provided in satisfaction of condition 1 above.
+#
+# **Original source**: `Unit4_LLMs-1.ipynb`, Principles of Machine Learning (7WCM2032), University of Hertfordshire, 2024.
+#
+# **Adapted from the original source, with modifications:**
+#
+# | Component              | Modification                                                                                                                                                                                               |
+# | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+# | `EmbeddingModel`       | `embed_single` merged into a single overloaded `embed` accepting either a string or a list; type aliases added.                                                                                            |
+# | `SimpleVectorDatabase` | Metadata ids assigned automatically using an offset from the insertion point to prevent retrieved documents from being untraceable due to mismatched ids.                                                  |
+# | `SimpleRAGSystem`      | Prompt template rewritten to require short answers to reduce the consumption of tokens, and reduce the refusal phrases to one sentence.                                                                    |
+# | `RAGResponse`          | Extended to include LLMResults, this container carries the token usage and latency from the LLM call.                                                                                                      |
+# | `RAGEvaluator`         | The original substring support check was replaced with the official SQuAD v2 protocol: exact match and token-level F1, maximised over reference answers, with decline handling for unanswerable questions. |
+#
+# **Written for this coursework (not derived from the original source):** the `LLM` provider registry with the `OpenAILLM` and `NVidiaLLM` implementations, `LLMResults`, the `Dataset` and `DatasetQuestion` wrappers over SQuAD v2, the `NoRAG` baseline, the `Experiment` and `ExperimentResult` harness, and the whole of Sections 7 and 8 — the analysis DataFrame, the `Plot` class and every summary table.
+#
+# ## Dataset — SQuAD v2
+#
+# The Stanford Question Answering Dataset v2.0 is distributed under the **Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)** licence.
+# Dataset card: https://huggingface.co/datasets/rajpurkar/squad_v2
+#
+# ## Retrieval model — all-MiniLM-L6-v2
+#
+# Sentence embeddings are produced with `sentence-transformers/all-MiniLM-L6-v2`, released under the **Apache License 2.0**. The model maps text to a 384-dimensional dense vector space and is used here to embed both the corpus paragraphs and the questions.
+# Model card: https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2
+#
+# ## Models evaluated
+#
+# Neither model is redistributed in this work; both were accessed over their providers' APIs and are subject to those providers' terms of use.
+#
+# | Model                   | Accessed through                                   |
+# | ----------------------- | -------------------------------------------------- |
+# | `gpt-5.4-mini`          | OpenAI API                                         |
+# | `meta/muse-glimmer-30b` | NVIDIA API (`https://integrate.api.nvidia.com/v1`) |
+#
+# ## Software
+#
+# | Library                 | Version | Licence                  |
+# | ----------------------- | ------- | ------------------------ |
+# | `sentence-transformers` | 6.0.0   | Apache 2.0               |
+# | `datasets`              | 5.0.1   | Apache 2.0               |
+# | `openai`                | 3.6.0   | Apache 2.0               |
+# | `numpy`                 | 2.5.2   | BSD-3-Clause             |
+# | `pandas`                | 3.0.5   | BSD-3-Clause             |
+# | `matplotlib`            | 3.11.1  | PSF (matplotlib licence) |
+# | `python-dotenv`         | 1.2.3   | BSD-3-Clause             |
+#
+# ---
+#
+# # References
+#
+# Referenced in Harvard style, ordered alphabetically by author. Organisations are
+# cited as corporate authors and alphabetised under the organisation name.
+#
+# Helal, M. (2024) _Unit4_LLMs-1.ipynb_ [Jupyter notebook]. Principles of Machine Learning (7WCM2032). Hatfield: University of Hertfordshire.
+#
+# HuggingFace Evaluate Authors (2020) `squad_v2.py`: SQuAD v2 evaluation metric. Apache License 2.0. Available at: https://github.com/huggingface/evaluate/blob/main/metrics/squad_v2/squad_v2.py (Accessed: 7 September 2026).
+#
+# Rajpurkar, P. (2018) `_squad_v2_ [Dataset]`. Hugging Face. Available at: https://huggingface.co/datasets/rajpurkar/squad_v2 (Accessed: 7 September 2026).
+#
+# Rajpurkar, P., Jia, R. and Liang, P. (2018) 'Know what you don't know: unanswerable questions for SQuAD', _Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 2: Short Papers)_. Melbourne, Australia: Association for Computational Linguistics, pp. 784–789. Available at: https://doi.org/10.18653/v1/P18-2124 (Accessed: 7 September 2026).
+#
+# Reimers, N. and Gurevych, I. (2019) 'Sentence-BERT: sentence embeddings using Siamese BERT-networks', _Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing_. Hong Kong: Association for Computational Linguistics. Available at: https://arxiv.org/abs/1908.10084 (Accessed: 7 September 2026).
+#
+# Sentence-Transformers (no date) _all-MiniLM-L6-v2_ [Machine learning model]. Hugging Face. Available at: https://huggingface.co/sentence-transformers/all-MiniLM-L6-v2 (Accessed: 7 September 2026).
+#
+# Waskom, M. (no date) _Visualizing distributions of data_. seaborn documentation. Available at: https://seaborn.pydata.org/tutorial/distributions.html (Accessed: 7 September 2026).
+#
+# ## BibTeX entries
+#
+# Provided for convenience only; the Harvard list above is the reference list.
+#
+# ```bibtex
+# @inproceedings{rajpurkar-etal-2018-know,
+#     title = "Know What You Don{'}t Know: Unanswerable Questions for {SQ}u{AD}",
+#     author = "Rajpurkar, Pranav  and
+#       Jia, Robin  and
+#       Liang, Percy",
+#     editor = "Gurevych, Iryna  and
+#       Miyao, Yusuke",
+#     booktitle = "Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 2: Short Papers)",
+#     month = jul,
+#     year = "2018",
+#     address = "Melbourne, Australia",
+#     publisher = "Association for Computational Linguistics",
+#     url = "https://aclanthology.org/P18-2124",
+#     doi = "10.18653/v1/P18-2124",
+#     pages = "784--789",
+#     eprint={1806.03822},
+#     archivePrefix={arXiv},
+#     primaryClass={cs.CL}
+# }
+# ```
+#
+# ```bibtex
+# @inproceedings{reimers-2019-sentence-bert,
+#     title = "Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks",
+#     author = "Reimers, Nils and Gurevych, Iryna",
+#     booktitle = "Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing",
+#     month = "11",
+#     year = "2019",
+#     publisher = "Association for Computational Linguistics",
+#     url = "https://arxiv.org/abs/1908.10084"
+# }
+# ```
+#
+# ---
+#
+# # Declaration of Use of Generative AI
+#
+# > **DRAFT — check this against the module's own policy on generative AI before submitting, and edit or remove it accordingly.**
+#
+# Generative AI was used as a coding and analysis assistant during the preparation of this notebook:
+#
+# - **Claude (Anthropic)** was used in Sections 7 and 8. It contributed to the implementation of the `hydrate` helper, the empirical cumulative distribution and token-cost figures, the grid layout of the similarity histograms, and the `threshold_table` and `cost_table` summary tables. It was also used to discuss the interpretation of the results.
+# - **GitHub Copilot** was used throughout for small in-editor corrections and completions while writing the code.
+#
+# The following tools are declared for completeness, although they are not generative AI. **ruff**, a deterministic static linter and formatter, was used to check style and formatting across the project. **Pylance** was used in the editor for type checking and diagnostics. Both analyse code against fixed rules and type information; neither generates or suggests new logic.
+#
+# All experimental design decisions, the choice of research questions, the execution of the experiment and the conclusions drawn in the written report are the author's own. Every figure and table reported here was regenerated from the raw experimental records in `results/` and checked against them.
+#
+
+# %% [markdown]
+# # Index
+#
+# - **Section 1**: EMBEDDINGS AND VECTOR SEARCH
+# - **Section 2**: LLM Models with two providers + SQuAD Dataset
+#   - **Section 2.1**: SQuAD Dataset
+# - **Section 3**: RETRIEVAL-AUGMENTED GENERATION (RAG)
+# - **Section 4**: Evaluation
+# - **Section 5**: Build Experiment
+# - **Section 6**: Run the experiment
+#   - **Section 6.1**: Load results for post-processing and analysis
+# - **Section 7**: Post-processing and analysis
+#   - **Section 7.1**: Build the analysis DataFrame
+#   - **Section 7.2**: Plotting functions for analysis
+#   - **Section 7.3**: Summary tables for analysis
+# - **Section 8**: Run the analysis and generate plots and tables
+#   - **Section 8.1**: Summary of every metric in the brief
+#   - **Section 8.2**: Where the grounded answers went wrong
+#   - **Section 8.3**: Figures
+#   - **Section 8.4**:
+#   - **Section 8.5**:
+#   - **Section 8.6**:
+#   - **Section 8.7**:
+#
+
+# %% [markdown]
 # ## SECTION 1: EMBEDDINGS AND VECTOR SEARCH
+#
 
 # %%
 import time
@@ -111,6 +299,7 @@ class SimpleVectorDatabase:
 
 # %% [markdown]
 # ## SECTION 2: LLM Models with two providers + SQuAD Dataset
+#
 
 # %%
 import os
@@ -290,6 +479,7 @@ class NVidiaLLM(LLM):
 
 # %% [markdown]
 # ### SECTION 2.1: SQuAD Dataset
+#
 
 # %%
 import random
@@ -450,6 +640,7 @@ class Dataset:
 
 # %% [markdown]
 # ## SECTION 3: RETRIEVAL-AUGMENTED GENERATION (RAG)
+#
 
 # %%
 @dataclass
@@ -576,6 +767,7 @@ Answer:"""
 
 # %% [markdown]
 # ## SECTION 4: Evaluation
+#
 
 # %%
 import re
@@ -586,13 +778,7 @@ from collections import Counter
 def _normalize_texts(text: str) -> str:
     """Lowercase, strip punctuation and articles, and normalize whitespace.
     E.G. "The CAR runs fast." -> "car runs fast"
-
-    Args:
-        text (str): _description_
-
-    Returns:
-        str: _description_
-        TODO: Investigate source to confirm if it is the standard squad normalization
+    The normalization follows the SQuAD v2 evaluation protocol for exact match and F1 score calculations. See the Copyright and Licensing section of the notebook for the source of this normalization function.
     """
     text = text.lower().strip()
     text = "".join(
@@ -610,7 +796,14 @@ UNANSWERABLE_TOKEN = _normalize_texts(UNANSWERABLE_PHRASE)
 
 
 def clean_model_answer(raw: str | None) -> str:
-    """TODO:"""
+    """Clean the model's raw answer.
+
+    Args:
+        raw (str | None): The raw answer from the model.
+
+    Returns:
+        str: The cleaned answer, with leading/trailing whitespace removed. Returns an empty string if the input is None.
+    """
     if raw is None:
         return ""
     return raw.strip()
@@ -623,7 +816,6 @@ class RAGEvaluator:
     check was replaced with the official SQuAD v2 protocol (EM / token-F1,
     max over reference answers, decline handling for unanswerable questions).
 
-    #TODO: See: https://github.com/huggingface/evaluate/blob/main/metrics/squad_v2/squad_v2.py
     """
 
     @staticmethod
@@ -711,6 +903,7 @@ class RAGEvaluator:
 
 # %% [markdown]
 # ## SECTION 5: Build Experiment
+#
 
 # %%
 import json
@@ -886,16 +1079,16 @@ class Experiment:
                         # Print progress and metrics for the current question, including the exact match (em), F1 score (f1), retrieval hit status, latency, and a truncated version of the answer.
                         print(
                             f"  [{i:>3}/{len(questions)}] em={metrics['em']:.0f} "
-                            f"f1={metrics['f1']:.2f} hit={retrieval_hit} latency={latency_s:>5.1f}s | {answer[:20]}..."
+                            f"f1={metrics['f1']:.2f} hit={retrieval_hit} latency={latency_s:>5.1f}s | {answer[:100]}."
                         )
                     print(f"{config}: Processed")
 
 
 # %% [markdown]
 # ## SECTION 6: Run the experiment
+#
 
 # %%
-
 # Initialize a LLM factory
 llm = LLM()
 ## Create instances of the LLMs to be used in the experiment
@@ -919,10 +1112,9 @@ for seed in SEEDS:
 
 # %% [markdown]
 # ### Section 6.1: Load results for post-processing and analysis
+#
 
 # %%
-
-
 def load_results(results_dir: Path) -> list[ExperimentResult]:
     """Read every seed file into one flat list of records."""
     records = []
@@ -944,13 +1136,16 @@ else:
 
 # %% [markdown]
 # ## SECTION 7: Post-processing and Analysis
+#
 
 # %% [markdown]
 # ### SECTION 7.1: Build the analysis DataFrame
+#
 
 # %%
 import matplotlib.pyplot as plt
 import pandas as pd
+from matplotlib.patches import Patch
 
 # Answers scoring at or above this F1 count as "correct" wherever the analysis
 # needs a yes/no split (the grounding cross-tab and the similarity histogram).
@@ -1051,12 +1246,72 @@ def _mean_per_seed(
     return [float(value) for value in per_seed]
 
 
+def hydrate(frame: pd.DataFrame, dataset: Dataset) -> pd.DataFrame:
+    """Join the question text, the gold answers and the passages back onto the
+    records, so a failure can be quoted in the report instead of only counted.
+
+    The experiment stores ids, not prose. `retrieved_ids` are indices into
+    `dataset.corpus`, which is `sorted(unique(context))` - a stable order that
+    does not depend on the seed - so every passage is recoverable offline from
+    the ids alone. Nothing here calls an API or re-runs the experiment.
+
+    Any Dataset instance will do: the corpus and the id -> question lookup are
+    seed-independent, only the *sample* of questions drawn from it is not.
+
+    The retrieved passages are stored as references into the same corpus list,
+    not as copies, so the extra columns cost list overhead rather than one
+    duplicate of the text per row.
+    """
+    corpus = dataset.corpus
+    questions = {question.id: question for question in dataset.get_questions()}
+
+    return frame.assign(
+        question=frame["question_id"].map(lambda qid: questions[qid].question),
+        gold_answers=frame["question_id"].map(lambda qid: questions[qid].answers),
+        gold_context=frame["question_id"].map(
+            lambda qid: corpus[questions[qid].context_id]
+        ),
+        # A plain run retrieved nothing, so its list is empty rather than
+        # missing: "the model was given no passages" is a fact, not a gap.
+        retrieved_context=frame["retrieved_ids"].map(
+            lambda ids: [corpus[doc_id] for doc_id in ids]
+        ),
+    )
+
+
+def _largest_ecdf_gap(
+    correct: list[float], incorrect: list[float]
+) -> tuple[float, float]:
+    """Biggest vertical distance between the two ECDFs, and where it happens.
+
+    This is the Kolmogorov-Smirnov statistic, read here for what it means
+    operationally rather than as a test: at the cut-off that maximises it, the
+    gap is (share of wrong answers stopped) - (share of right answers lost).
+    It is the ceiling on any single threshold on this axis, so a small number
+    rules the whole idea out rather than just the cut-offs that were tried.
+    """
+    if not correct or not incorrect:
+        return 0.0, float("nan")
+
+    correct_sorted = np.sort(correct)
+    incorrect_sorted = np.sort(incorrect)
+    # Every observed value is a candidate cut-off; the extremum of a step
+    # function can only sit at a step.
+    cutoffs = np.unique(np.concatenate([correct_sorted, incorrect_sorted]))
+    lost = np.searchsorted(correct_sorted, cutoffs, side="right") / len(correct_sorted)
+    stopped = np.searchsorted(incorrect_sorted, cutoffs, side="right") / len(
+        incorrect_sorted
+    )
+    gaps = stopped - lost
+    best = int(np.argmax(gaps))
+    return float(gaps[best]), float(cutoffs[best])
+
+
 # %% [markdown]
 # ### SECTION 7.2: Plotting functions for analysis
+#
 
 # %%
-
-
 class Plot:
     """A class to encapsulate plotting functions for RAG experiment results."""
 
@@ -1167,12 +1422,21 @@ class Plot:
         plt.show()
 
     def plot_retrieval_hit_rate(self, frame: pd.DataFrame) -> None:
-        """Line: share of questions whose own context made it into the top-k.
+        """Line: share of questions whose own context made it into the top-k,
+        split by whether the question has an answer at all.
 
         Retrieval runs before the LLM and uses the same embeddings for both
-        models, so this curve is a property of the retriever alone. Rows are
+        models, so this is a property of the retriever alone - the models are
+        not separated because they retrieved identical documents. Rows are
         de-duplicated by (seed, top_k, question) so a question is not counted
         once per model.
+
+        Split because only the answerable line is a ceiling. Where an answer
+        exists, a miss makes a correct answer impossible, so that line bounds
+        everything downstream. An unanswerable question has nothing to find,
+        so its hit-rate bounds nothing - it is shown because the gap is a
+        finding of its own: SQuAD v2 writes unanswerable questions to look
+        plausible against a paragraph, which makes them harder to retrieve.
         """
         self._figure_path.mkdir(exist_ok=True)
         rag = frame[frame["config"] != "plain"].dropna(subset=["retrieval_hit"])
@@ -1181,97 +1445,389 @@ class Plot:
             return
 
         per_question = rag.drop_duplicates(subset=["seed", "top_k", "question_id"])
-        # Mean within each seed first, then across seeds: the seed is the
-        # sampling unit, so a seed with fewer questions must not weigh less.
-        by_k = (
-            per_question.groupby(["top_k", "seed"], observed=True)["retrieval_hit"]
-            .mean()
-            .groupby("top_k", observed=True)
-            .mean()
-        )
-        ks = [int(k) for k in by_k.index]
-        rates = [float(rate) for rate in by_k]
 
-        fig, ax = plt.subplots(figsize=(6.5, 4))
-        ax.plot(
-            ks,
-            rates,
-            marker="o",
-            linewidth=2,
-            markersize=8,
-            color=self.SERIES_COLORS[0],
-        )
-        for k, rate in zip(ks, rates):
-            ax.text(
-                k, rate + 0.03, f"{rate:.3f}", ha="center", fontsize=9, color="#52514e"
+        fig, ax = plt.subplots(figsize=(7, 4.5))
+        # The two lines run close together at k=1, so their labels are pushed
+        # to opposite sides of the marker instead of both sitting above it.
+        series = [
+            (
+                True,
+                "answerable (this line is the ceiling)",
+                self.SERIES_COLORS[0],
+                0.035,
+                "bottom",
+            ),
+            (False, "unanswerable", self.SERIES_COLORS[1], -0.035, "top"),
+        ]
+        for answerable, label, color, offset, align in series:
+            rows = per_question[per_question["is_answerable"] == answerable]
+            # Mean within each seed first, then across seeds: the seed is the
+            # sampling unit, so a seed with fewer questions must not weigh less.
+            by_k = (
+                rows.groupby(["top_k", "seed"], observed=True)["retrieval_hit"]
+                .mean()
+                .groupby("top_k", observed=True)
+                .mean()
             )
+            ks = [int(k) for k in by_k.index]
+            rates = [float(rate) for rate in by_k]
+            ax.plot(
+                ks,
+                rates,
+                marker="o",
+                linewidth=2,
+                markersize=8,
+                color=color,
+                label=label,
+            )
+            for k, rate in zip(ks, rates):
+                ax.text(
+                    k,
+                    rate + offset,
+                    f"{rate:.3f}",
+                    ha="center",
+                    va=align,
+                    fontsize=9,
+                    color="#52514e",
+                )
+
         ax.set_xlabel("top_k")
         ax.set_ylabel("retrieval hit-rate")
         ax.set_ylim(0, 1.12)
-        ax.set_xticks(ks)
-        # A single series needs no legend box - the title names it
+        ax.set_xticks(sorted(int(k) for k in per_question["top_k"].unique()))
         ax.set_title("Retrieval hit-rate vs top_k", fontsize=11, loc="left")
+        ax.legend(frameon=False, fontsize=9, loc="lower right")
         fig.tight_layout()
         fig.savefig(self._figure_path / "retrieval_hit_rate.png", dpi=150)
         plt.show()
 
     def plot_similarity_distribution(self, frame: pd.DataFrame) -> None:
-        """Histogram of top-1 similarity for correct vs incorrect RAG answers.
+        """Grid of top-1 similarity histograms: one row per model, one column
+        per RAG configuration.
 
         Motivates (or rules out) a similarity threshold as a second tuning axis:
         if wrong answers cluster at low similarity, declining below a cut-off
         would help without ever calling the LLM.
+
+        Split rather than pooled, for two unrelated reasons. `plain` has no
+        retriever, so its top_similarity is a 0.0 filler and not a measurement.
+        And top-1 similarity is identical across k by construction - only the
+        answer changes - so pooling the configs would repeat every question
+        three times at the same x, inflating n with correlated rows and letting
+        a single question land in both the correct and the incorrect histogram.
         """
         self._figure_path.mkdir(exist_ok=True)
         rag = frame[frame["config"] != "plain"]
-        correct = rag.loc[rag["correct"], "top_similarity"].tolist()
-        incorrect = rag.loc[~rag["correct"], "top_similarity"].tolist()
-
-        values = correct + incorrect
-        if not values:
+        if rag.empty:
             print("No RAG answers to plot.")
             return
 
-        # Bin over the range the data actually occupies. Cosine similarity is
-        # bounded 0-1, but retrieved passages cluster in a narrow band, so a
-        # fixed 0-1 axis spends most of its width on empty space.
-        low, high = min(values), max(values)
+        models = model_order(rag)
+        configs = [config for config in config_order(rag) if config != "plain"]
+
+        # Bins come from every panel's data at once. Per-panel bins would give
+        # each cell its own x range, so a bar in the same place would mean a
+        # different similarity in each cell - which is the one thing a grid has
+        # to make safe to compare.
+        low, high = rag["top_similarity"].min(), rag["top_similarity"].max()
         pad = max((high - low) * 0.05, 0.01)
         bins = np.linspace(low - pad, high + pad, 21).tolist()
 
-        fig, ax = plt.subplots(figsize=(7, 4))
-        # Draw the two groups side by side inside each bin rather than as two
-        # translucent layers: overlapping fills mix into a third colour that
-        # reads as a category of its own but means nothing. rwidth leaves a
-        # gap so the paired bars never touch.
-        ax.hist(
-            [correct, incorrect],
-            bins=bins,
-            density=True,
-            rwidth=0.85,
-            label=[f"F1 >= {CORRECT_F1_THRESHOLD}", f"F1 < {CORRECT_F1_THRESHOLD}"],
-            color=[self.SERIES_COLORS[0], self.SERIES_COLORS[1]],
+        fig, axes = plt.subplots(
+            len(models),
+            len(configs),
+            figsize=(4.2 * len(configs), 3.4 * len(models)),
+            sharex=True,
+            sharey=True,
+            squeeze=False,
         )
-        ax.set_xlabel("top-1 cosine similarity")
-        # Each group is normalised on its own, so the two shapes stay
-        # comparable even though far more answers are correct than incorrect.
-        ax.set_ylabel("density (each group normalised separately)")
-        ax.set_title(
+
+        for row, model in enumerate(models):
+            for col, config in enumerate(configs):
+                ax = axes[row][col]
+                cell = rag[(rag["llm_model"] == model) & (rag["config"] == config)]
+                correct = cell.loc[cell["correct"], "top_similarity"].tolist()
+                incorrect = cell.loc[~cell["correct"], "top_similarity"].tolist()
+
+                ax.hist(
+                    [correct, incorrect],
+                    bins=bins,
+                    density=True,
+                    rwidth=0.85,
+                    color=[self.SERIES_COLORS[0], self.SERIES_COLORS[1]],
+                )
+
+                # Density normalises each group away from its own size, so the
+                # counts have to be written down somewhere: a tall bar built
+                # from four answers must not read like one built from four
+                # hundred.
+                ax.text(
+                    0.97,
+                    0.94,
+                    f"F1 >= {CORRECT_F1_THRESHOLD}: {len(correct)}\n"
+                    f"F1 <  {CORRECT_F1_THRESHOLD}: {len(incorrect)}",
+                    transform=ax.transAxes,
+                    ha="right",
+                    va="top",
+                    fontsize=8,
+                    color="#52514e",
+                )
+
+                # Label the edges only: an inner cell inherits both its
+                # column's config and its row's model from the panels around it.
+                if row == 0:
+                    ax.set_title(config, fontsize=10)
+                if row == len(models) - 1:
+                    ax.set_xlabel("top-1 cosine similarity")
+                if col == 0:
+                    ax.set_ylabel(model, fontsize=9)
+
+        # Proxy handles rather than the bar containers: a cell where one group
+        # is empty returns an empty container, and indexing into it would raise.
+        legend_handles = [
+            Patch(color=self.SERIES_COLORS[0]),
+            Patch(color=self.SERIES_COLORS[1]),
+        ]
+        fig.legend(
+            legend_handles,
+            [f"F1 >= {CORRECT_F1_THRESHOLD}", f"F1 < {CORRECT_F1_THRESHOLD}"],
+            frameon=False,
+            fontsize=9,
+            loc="lower center",
+            ncol=2,
+        )
+        fig.suptitle(
             "Retrieval similarity: correct vs incorrect answers",
             fontsize=11,
-            loc="left",
+            x=0.01,
+            ha="left",
         )
-        ax.legend(frameon=False, fontsize=9)
-        fig.tight_layout()
+        fig.supylabel("density (each group normalised separately)", fontsize=9)
+        # Reserve the bottom strip for the shared legend
+        fig.tight_layout(rect=(0.0, 0.05, 1.0, 1.0))
         fig.savefig(self._figure_path / "similarity_distribution.png", dpi=150)
+        plt.show()
+
+    def plot_similarity_ecdf(self, frame: pd.DataFrame) -> None:
+        """ECDF of top-1 similarity, correct vs incorrect, on the same grid.
+
+        The histogram shows the shape; this one answers the actual question.
+        A rule of the form "decline below this similarity" is read straight
+        off the y axis: at any cut-off, the pink curve is the share of wrong
+        answers the rule would stop and the blue curve the share of right ones
+        it would throw away. The rule is only worth having where pink runs
+        clearly above blue - curves that travel together mean the threshold
+        cannot separate the two groups at any value.
+
+        An ECDF rather than a second histogram because it takes no bin width,
+        so nothing in the picture is an artefact of a binning choice, and two
+        monotone curves are easier to compare than two bar fields.
+        Source: https://seaborn.pydata.org/tutorial/distributions.html
+        """
+        self._figure_path.mkdir(exist_ok=True)
+        rag = frame[frame["config"] != "plain"]
+        if rag.empty:
+            print("No RAG answers to plot.")
+            return
+
+        models = model_order(rag)
+        # `config_order` reads the column's categories, which survive a row
+        # filter, so "plain" is still listed here even though no row has it.
+        configs = [config for config in config_order(rag) if config != "plain"]
+
+        fig, axes = plt.subplots(
+            len(models),
+            len(configs),
+            figsize=(4.2 * len(configs), 3.4 * len(models)),
+            sharex=True,
+            sharey=True,
+            squeeze=False,
+        )
+
+        for row, model in enumerate(models):
+            for col, config in enumerate(configs):
+                ax = axes[row][col]
+                cell = rag[(rag["llm_model"] == model) & (rag["config"] == config)]
+                correct = cell.loc[cell["correct"], "top_similarity"].tolist()
+                incorrect = cell.loc[~cell["correct"], "top_similarity"].tolist()
+
+                for values, color in (
+                    (correct, self.SERIES_COLORS[0]),
+                    (incorrect, self.SERIES_COLORS[1]),
+                ):
+                    if values:
+                        ax.ecdf(values, color=color, linewidth=2)
+
+                # The largest vertical gap between the curves is the best any
+                # threshold on this axis can do. Naming it turns "the lines
+                # look close" into a number the report can quote.
+                gap, at = _largest_ecdf_gap(correct, incorrect)
+                ax.text(
+                    0.97,
+                    0.06,
+                    f"best gap {gap:.2f} @ {at:.2f}",
+                    transform=ax.transAxes,
+                    ha="right",
+                    va="bottom",
+                    fontsize=8,
+                    color="#52514e",
+                )
+
+                if row == 0:
+                    ax.set_title(config, fontsize=10)
+                if row == len(models) - 1:
+                    ax.set_xlabel("top-1 cosine similarity")
+                if col == 0:
+                    ax.set_ylabel(model, fontsize=9)
+
+        legend_handles = [
+            Patch(color=self.SERIES_COLORS[0]),
+            Patch(color=self.SERIES_COLORS[1]),
+        ]
+        fig.legend(
+            legend_handles,
+            [
+                f"F1 >= {CORRECT_F1_THRESHOLD} (would be lost)",
+                f"F1 < {CORRECT_F1_THRESHOLD} (would be stopped)",
+            ],
+            frameon=False,
+            fontsize=9,
+            loc="lower center",
+            ncol=2,
+        )
+        fig.suptitle(
+            "Would a similarity threshold work? Share of each group at or below x",
+            fontsize=11,
+            x=0.01,
+            ha="left",
+        )
+        fig.supylabel("cumulative share of the group", fontsize=9)
+        fig.tight_layout(rect=(0.0, 0.05, 1.0, 1.0))
+        fig.savefig(self._figure_path / "similarity_ecdf.png", dpi=150)
+        plt.show()
+
+    def plot_token_cost(self, frame: pd.DataFrame) -> None:
+        """Stacked prompt + completion tokens per question, one panel per model.
+
+        Stacked rather than two charts because the two parts move in opposite
+        directions: retrieval buys a bigger prompt and pays for it with a
+        shorter completion, and only the stack shows both the trade and the
+        total it nets out to.
+
+        Averaged per seed first, then across seeds, like every other figure
+        here - the seed is the sampling unit, so the error bar on the total
+        is the spread between question samples, not between questions.
+        """
+        self._figure_path.mkdir(exist_ok=True)
+        configs = config_order(frame)
+        models = model_order(frame)
+
+        fig, axes = plt.subplots(
+            1,
+            len(models),
+            figsize=(5.2 * len(models), 4.5),
+            sharey=True,
+            squeeze=False,
+        )
+
+        for col, model in enumerate(models):
+            ax = axes[0][col]
+            prompt, completion, totals, spread = [], [], [], []
+            for config in configs:
+                per_seed_prompt = _mean_per_seed(frame, model, config, "prompt_tokens")
+                per_seed_completion = _mean_per_seed(
+                    frame, model, config, "completion_tokens"
+                )
+                per_seed_total = _mean_per_seed(frame, model, config, "total_tokens")
+                prompt.append(
+                    float(np.mean(per_seed_prompt)) if per_seed_prompt else 0.0
+                )
+                completion.append(
+                    float(np.mean(per_seed_completion)) if per_seed_completion else 0.0
+                )
+                totals.append(float(np.mean(per_seed_total)) if per_seed_total else 0.0)
+                spread.append(float(np.std(per_seed_total)) if per_seed_total else 0.0)
+
+            x = np.arange(len(configs))
+            # edgecolor in the surface colour reads as a gap between the two
+            # segments rather than as a border drawn around them.
+            ax.bar(
+                x,
+                prompt,
+                0.62,
+                color=self.SERIES_COLORS[0],
+                edgecolor="#fcfcfb",
+                linewidth=1.5,
+            )
+            ax.bar(
+                x,
+                completion,
+                0.62,
+                bottom=prompt,
+                color=self.SERIES_COLORS[2],
+                edgecolor="#fcfcfb",
+                linewidth=1.5,
+                yerr=spread,
+                capsize=3,
+                error_kw={"ecolor": "#52514e", "elinewidth": 1},
+            )
+
+            # One label per bar - the total, which is the number the report
+            # quotes. The split is readable off the segments and the axis.
+            for xi, total, std in zip(x, totals, spread):
+                ax.text(
+                    xi,
+                    total + std + max(totals) * 0.03,
+                    f"{total:,.0f}",
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                    color="#52514e",
+                )
+
+            ax.set_xticks(x, configs)
+            ax.set_title(model, fontsize=10, loc="left")
+            if col == 0:
+                ax.set_ylabel("mean tokens per question")
+
+        top = max(
+            float(np.mean(_mean_per_seed(frame, model, config, "total_tokens") or [0]))
+            for model in models
+            for config in configs
+        )
+        for ax in axes[0]:
+            ax.set_ylim(0, top * 1.18)
+
+        legend_handles = [
+            Patch(color=self.SERIES_COLORS[0]),
+            Patch(color=self.SERIES_COLORS[2]),
+        ]
+        fig.legend(
+            legend_handles,
+            ["prompt tokens", "completion tokens"],
+            frameon=False,
+            fontsize=9,
+            loc="lower center",
+            ncol=2,
+        )
+        n_seeds = len(seed_order(frame))
+        fig.suptitle(
+            "Token cost per question by configuration\n"
+            f"stacked mean, error bar is std of the total across {n_seeds} seed(s)",
+            fontsize=11,
+            x=0.01,
+            ha="left",
+        )
+        fig.tight_layout(rect=(0.0, 0.06, 1.0, 1.0))
+        fig.savefig(self._figure_path / "token_cost.png", dpi=150)
         plt.show()
 
 
 # %% [markdown]
 # ### SECTION 7.3: Summary tables for analysis
+#
 
 # %%
-
 # What each quadrant of the grounding cross-tab means, so the table can be
 # read without going back to the docstring.
 GROUNDING_MEANING = {
@@ -1372,16 +1928,173 @@ def grounding_breakdown(frame: pd.DataFrame) -> pd.DataFrame:
     ]
 
 
+HYDRATED_COLUMNS = ("question", "gold_answers", "gold_context", "retrieved_context")
+
+
+def _require_hydrated(frame: pd.DataFrame) -> None:
+    """Fail loudly rather than return a table of ids nobody can read."""
+    missing = [column for column in HYDRATED_COLUMNS if column not in frame.columns]
+    if missing:
+        raise KeyError(
+            f"call hydrate(frame, Dataset()) first - missing columns: {missing}"
+        )
+
+
+def _snippet(passages: list[str], width: int = 240) -> str:
+    """First retrieved passage, trimmed to something quotable."""
+    if not passages:
+        return ""
+    text = " ".join(passages[0].split())
+    return text if len(text) <= width else text[: width - 1] + "…"
+
+
 def find_failure_examples(frame: pd.DataFrame, n: int = 5) -> pd.DataFrame:
     """Hallucination candidates for the report: answers invented for
-    questions that have no answer (the system did not decline)."""
-    failures = frame[~frame["is_answerable"] & ~frame["declined"]]
-    columns = ["llm_model", "config", "question_id", "top_similarity", "answer"]
+    questions that have no answer (the system did not decline).
+
+    The gold answer is empty here by construction - the question has none -
+    so what makes these rows explainable is the passage the model was looking
+    at while it invented something. That is why the frame has to be hydrated.
+    """
+    _require_hydrated(frame)
+    failures = frame[~frame["is_answerable"] & ~frame["declined"]].copy()
+    failures["top_context"] = failures["retrieved_context"].map(_snippet)
+    # A plain run retrieved nothing, so its row can be reported but not
+    # diagnosed. Sort those last so `head` does not spend every slot on rows
+    # whose top_context is blank.
+    failures = failures.sort_values(
+        "top_context", key=lambda column: column.eq(""), kind="stable"
+    )
+    columns = [
+        "llm_model",
+        "config",
+        "question",
+        "answer",
+        "top_similarity",
+        "top_context",
+    ]
     return failures[columns].head(n)
 
 
+def find_wrong_answer_examples(frame: pd.DataFrame, n: int = 5) -> pd.DataFrame:
+    """Answerable questions the model answered anyway, and got wrong.
+
+    The complement of `find_failure_examples`, and the one that carries the
+    gold answer: here a right answer exists, so the row can be diagnosed
+    instead of merely reported. `retrieval_hit` splits the two causes that
+    need different fixes - False means the retriever never surfaced the right
+    passage, True means the model had it and still misread it.
+
+    Sorted so the retrieval_hit=True rows come first: those are the ones that
+    indict the model rather than the index, and they are the harder finding.
+    """
+    _require_hydrated(frame)
+    wrong = frame[
+        frame["is_answerable"] & ~frame["declined"] & ~frame["correct"]
+    ].copy()
+    wrong["top_context"] = wrong["retrieved_context"].map(_snippet)
+    wrong = wrong.sort_values("retrieval_hit", ascending=False, na_position="last")
+    columns = [
+        "llm_model",
+        "config",
+        "question",
+        "gold_answers",
+        "answer",
+        "f1",
+        "retrieval_hit",
+        "top_similarity",
+        "top_context",
+    ]
+    return wrong[columns].head(n)
+
+
+def threshold_table(frame: pd.DataFrame) -> pd.DataFrame:
+    """The best "decline below this similarity" rule available, per cell.
+
+    One row per model and configuration, reporting the cut-off that maximises
+    (wrong answers stopped) - (right answers lost), and what that cut-off
+    actually buys. Reading it: `net` is the ceiling on the whole idea, not the
+    score of one guess, because the cut-off was chosen to maximise it on this
+    very data - a real deployment would pick the threshold on one split and
+    pay for it on another, so the honest number is somewhat worse than shown.
+    A net near zero means no threshold on this axis is worth having.
+    """
+    rag = frame[frame["config"] != "plain"]
+    if rag.empty:
+        return pd.DataFrame()
+
+    rows = []
+    for (model, config), cell in rag.groupby(["llm_model", "config"], observed=True):
+        correct = cell.loc[cell["correct"], "top_similarity"].tolist()
+        incorrect = cell.loc[~cell["correct"], "top_similarity"].tolist()
+        net, cutoff = _largest_ecdf_gap(correct, incorrect)
+        stopped = (
+            float(np.mean(np.asarray(incorrect) <= cutoff))
+            if incorrect
+            else float("nan")
+        )
+        lost = (
+            float(np.mean(np.asarray(correct) <= cutoff)) if correct else float("nan")
+        )
+        rows.append(
+            {
+                "llm_model": model,
+                "config": config,
+                "cutoff": cutoff,
+                "stopped_wrong": stopped,
+                "lost_correct": lost,
+                "net": net,
+                "n_wrong": len(incorrect),
+                "n_correct": len(correct),
+            }
+        )
+
+    table = pd.DataFrame(rows).set_index(["llm_model", "config"])
+    return table.round(3)
+
+
+def cost_table(frame: pd.DataFrame) -> pd.DataFrame:
+    """What each configuration costs, and what that spend buys.
+
+    `vs_plain` is the total-token multiplier against the no-RAG baseline for
+    the same model, so each model is compared to its own baseline rather than
+    to the other model's. `f1_per_1k` is the efficiency column: quality per
+    thousand tokens, which is the only place cost and accuracy are read
+    together - a configuration can win on F1 and still lose here.
+    """
+    grouped = frame.groupby(["llm_model", "config"], observed=True)
+    table = grouped.agg(
+        prompt=("prompt_tokens", "mean"),
+        completion=("completion_tokens", "mean"),
+        total=("total_tokens", "mean"),
+        lat_s=("latency_s", "mean"),
+        F1=("f1", "mean"),
+    )
+
+    baseline = table.xs("plain", level="config")["total"]
+    table["vs_plain"] = [
+        total / baseline[model] for (model, _), total in table["total"].items()
+    ]
+    # Quality per thousand tokens: the trade-off the report has to argue.
+    table["f1_per_1k"] = table["F1"] / table["total"] * 1000
+
+    columns = ["prompt", "completion", "total", "vs_plain", "lat_s", "F1", "f1_per_1k"]
+    return table[columns].round(
+        {
+            "prompt": 0,
+            "completion": 0,
+            "total": 0,
+            "vs_plain": 2,
+            "lat_s": 2,
+            "F1": 3,
+            "f1_per_1k": 3,
+        }
+    )
+
+
 # %% [markdown]
-# ## SECTION 8: Run the analysis and generate plots
+# ## SECTION 8: Run the analysis and generate plots and tables
+#
 
 # %%
 results_frame = results_to_frame(results)
@@ -1390,32 +2103,71 @@ print(
     f"| configs: {config_order(results_frame)} | seeds: {seed_order(results_frame)}"
 )
 
+# Join the question text, gold answers and passages back onto the records.
+# Any Dataset works here: the corpus and the id lookup are seed-independent,
+# so this recovers the prose offline from the stored ids - no API calls.
+results_frame = hydrate(results_frame, Dataset())
+print(f"hydrated columns: {[c for c in HYDRATED_COLUMNS]}")
+
 # %% [markdown]
 # ### SECTION 8.1: Summary of every metric in the brief
+#
 
 # %%
 summary_table(results_frame)
 
 # %% [markdown]
 # ### SECTION 8.2: Where the grounded answers went wrong
+#
 
 # %%
 grounding_breakdown(results_frame)
 
 # %% [markdown]
 # ### SECTION 8.3: Figures
+#
 
 # %%
 plot = Plot(results_frame)
+# F1 for all questions - Answerable and unanswerable
 plot.plot_metric_by_config(results_frame, "f1")
+# Exact match for all questions - Answerable and unanswerable
 plot.plot_metric_by_config(results_frame, "em")
+# F1 for answerable questions only
 plot.plot_metric_by_config(results_frame, "f1", subset=True)
+# F1 for unanswerable questions only
 plot.plot_metric_by_config(results_frame, "f1", subset=False)
+# Retrieval hit-rate: share of questions whose own context made it into the top-k
 plot.plot_retrieval_hit_rate(results_frame)
+
 plot.plot_similarity_distribution(results_frame)
+plot.plot_similarity_ecdf(results_frame)
+plot.plot_token_cost(results_frame)
 
 # %% [markdown]
 # ### SECTION 8.4: Concrete failures to quote in the report
+#
 
 # %%
 find_failure_examples(results_frame)
+
+# %% [markdown]
+# ### SECTION 8.5: Answerable questions the model still got wrong
+#
+
+# %%
+find_wrong_answer_examples(results_frame)
+
+# %% [markdown]
+# ### SECTION 8.6: Would a similarity threshold have helped?
+#
+
+# %%
+threshold_table(results_frame)
+
+# %% [markdown]
+# ### SECTION 8.7: What each configuration costs, and what it buys
+#
+
+# %%
+cost_table(results_frame)
