@@ -1,7 +1,7 @@
 # %% [markdown]
-# # Evaluation of a Retrieval-Augmented Generation (RAG) system using "gpt-5.4-mini" and "muse-glimmer-30b" models on SQuAD V2 Dataset. Principles of Machine Learning (7WCM2032) Coursework
+# # Evaluation of a Retrieval-Augmented Generation (RAG) system using "gpt-5.4-mini" and "muse-glimmer-30b" models on SQuAD V2 Dataset. For the module Principles of Machine Learning (7WCM2032) Coursework
 #
-# **Student Name**: Hector S. Lazcano Quintero Marmol  
+# **Student Name**: Hector S. Lazcano Quintero Marmol
 # **Student ID**: 25054284
 #
 # # Copyright and Licensing
@@ -15,6 +15,8 @@
 #   **Suggested Attribution**:
 #
 #   This notebook was originally created by Hector Samuel Lazcano Quintero Marmol for the Principles of Machine Learning Module (7WCM2032) using as a starting point of reference the `Unit4_LLMs-1.ipynb`, Principles of Machine Learning (7WCM2032), University of Hertfordshire, 2024. Providing the correct attributions.
+#
+# For any questions or further information, please contact Hector S. Lazcano Quintero Marmol at [hectorslqm@gmail.com](mailto:hectorslqm@gmail.com) or [hl25acd@herts.ac.uk](mailto:hl25acd@herts.ac.uk)
 #
 # ## Course material — Manal Helal, University of Hertfordshire
 #
@@ -89,9 +91,6 @@
 #
 # # References
 #
-# Referenced in Harvard style, ordered alphabetically by author. Organisations are
-# cited as corporate authors and alphabetised under the organisation name.
-#
 # Helal, M. (2024) _Unit4_LLMs-1.ipynb_ [Jupyter notebook]. Principles of Machine Learning (7WCM2032). Hatfield: University of Hertfordshire.
 #
 # HuggingFace Evaluate Authors (2020) `squad_v2.py`: SQuAD v2 evaluation metric. Apache License 2.0. Available at: https://github.com/huggingface/evaluate/blob/main/metrics/squad_v2/squad_v2.py (Accessed: 7 September 2026).
@@ -148,8 +147,6 @@
 #
 # # Declaration of Use of Generative AI
 #
-# > **DRAFT — check this against the module's own policy on generative AI before submitting, and edit or remove it accordingly.**
-#
 # Generative AI was used as a coding and analysis assistant during the preparation of this notebook:
 #
 # - **Claude (Anthropic)** was used in Sections 7 and 8. It contributed to the implementation of the `hydrate` helper, the empirical cumulative distribution and token-cost figures, the grid layout of the similarity histograms, and the `threshold_table` and `cost_table` summary tables. It was also used to discuss the interpretation of the results.
@@ -158,6 +155,24 @@
 # The following tools are declared for completeness, although they are not generative AI. **ruff**, a deterministic static linter and formatter, was used to check style and formatting across the project. **Pylance** was used in the editor for type checking and diagnostics. Both analyse code against fixed rules and type information; neither generates or suggests new logic.
 #
 # All experimental design decisions, the choice of research questions, the execution of the experiment and the conclusions drawn in the written report are the author's own. Every figure and table reported here was regenerated from the raw experimental records in `results/` and checked against them.
+#
+# ---
+#
+# # Dependencies
+#
+# Run the following command for installing the necessary dependencies:
+#
+# ```sh
+# pip install "datasets==5.0.1" "matplotlib==3.11.1" "numpy==2.5.2" "openai==3.6.0" "pandas==3.0.5" "python-dotenv==1.2.3"  "sentence-transformers==6.0.0"
+# ```
+#
+# The notebook also requires a `.env` file containing the necessary API keys for OpenAI, NVIDIA or both.
+#
+# ```text
+# # .env file should contain the necessary API keys, for example:
+# # OPENAI_API_KEY=your_openai_api_key
+# # NVIDIA_API_KEY=your_nvidia_api_key
+# ```
 #
 
 # %% [markdown]
@@ -506,31 +521,11 @@ class DatasetQuestion:
 
 class Dataset:
     """Dataset wrapper for loading contexts and questions.
-        - SQuAD v2 dataset by default. But can be configured to use other datasets as well.
-            - This dataset is composed by two subsets: "train" and "validation". We are using the "validation" subset by default.
-        - Seed for random number generation to ensure reproducibility. 42 by default.
+    - SQuAD v2 dataset by default. But can be configured to use other datasets as well.
+        - This dataset is composed by two subsets: "train" and "validation". We are using the "validation" subset by default.
+    - Seed for random number generation to ensure reproducibility. 42 by default.
 
-        See https://huggingface.co/datasets/rajpurkar/squad_v2 to explore the dataset.
-
-        @inproceedings{rajpurkar-etal-2018-know,
-        title = "Know What You Don{'}t Know: Unanswerable Questions for {SQ}u{AD}",
-        author = "Rajpurkar, Pranav  and
-          Jia, Robin  and
-          Liang, Percy",
-        editor = "Gurevych, Iryna  and
-          Miyao, Yusuke",
-        booktitle = "Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 2: Short Papers)",
-        month = jul,
-        year = "2018",
-        address = "Melbourne, Australia",
-        publisher = "Association for Computational Linguistics",
-        url = "https://aclanthology.org/P18-2124",
-        doi = "10.18653/v1/P18-2124",
-        pages = "784--789",
-        eprint={1806.03822},
-        archivePrefix={arXiv},
-        primaryClass={cs.CL}
-    }
+    See the Copyright and Licensing section of the notebook for more information on the dataset's usage and restrictions.
     """
 
     def __init__(
@@ -555,6 +550,7 @@ class Dataset:
         # Mapping from context to its index in the corpus
         self._context_to_id = {context: idx for idx, context in enumerate(self._corpus)}
 
+        # Initialize the list of questions
         self._questions: list[DatasetQuestion] = []
         self._questions_by_id: dict[str, DatasetQuestion] = {}
         # Create a QAPair for each row in the dataset and store it
@@ -642,6 +638,7 @@ class Dataset:
 # ## SECTION 3: RETRIEVAL-AUGMENTED GENERATION (RAG)
 #
 
+
 # %%
 @dataclass
 class RAGResponse:
@@ -654,6 +651,7 @@ class RAGResponse:
     llm_results: LLMResults | None
 
 
+# Updated the original two unanswerable phrases to a single unanswerable phrase.
 UNANSWERABLE_PHRASE = "I don't have an answer"
 
 
@@ -735,6 +733,7 @@ Answer:"""
 class NoRAG:
     """
     This class provides an answer without using the RAG system.
+    This is required for the plain test scenario where no RAG is used.
     """
 
     def __init__(self, llm_model: LLM):
@@ -831,8 +830,12 @@ class RAGEvaluator:
     @staticmethod
     def _f1_single(prediction: str, reference: str) -> float:
         """Token-overlap F1 between one prediction and one reference answer.
-        source: https://www.geeksforgeeks.org/machine-learning/f1-score-in-machine-learning/
+
+        This is the SQuAD token-level F1, not the classification F1: precision
+        and recall are counted over the bag of whitespace tokens shared by the
+        two normalized strings, so a partially correct span still scores.
         """
+        # First we normalize the prediction and reference answers.
         prediction_tokens = _normalize_texts(prediction).split()
         reference_tokens = _normalize_texts(reference).split()
         if not prediction_tokens or not reference_tokens:
@@ -1088,6 +1091,32 @@ class Experiment:
 # ## SECTION 6: Run the experiment
 #
 
+# %% [markdown]
+# ## About the experiment
+#
+# This experiment evaluates a Retrieval-Augmented Generation (RAG)
+# by comparing the generated answers from two LLM models. The models used for this experiment are "muse-glimmer-30b" and "gpt-5.4-mini".
+# This experiment run 3 different randomized set of 100 questions from SQuAD V2 Dataset using the validation dataset, comparing plain answer, no context given in other words No RAG, and RAG answers with the following configurations; Top-k of 1, 3 and 5.
+#
+# # Notes
+#
+# This experiment took about 99minutes to finished and used a paid LLM Service. For the analysis, the preloaded results will be used instead of running the experiment again.
+#
+# > You can skip the following cell and go to section 6.1
+#
+# If you want to use a different LLM with a different set of configurations you can modify the following cell.
+#
+# Use the corresponding .env Variable depending on the providers that you are going to use.
+#
+# ```bash
+# # Environment variables for API keys
+# NVIDIA_API_KEY=your_nvidia_api_key_here
+# OPENAI_API_KEY=your_openai_api_key_here
+# ```
+#
+# > The .env file must be placed in the root directory of the project
+#
+
 # %%
 # Initialize a LLM factory
 llm = LLM()
@@ -1113,6 +1142,12 @@ for seed in SEEDS:
 # %% [markdown]
 # ### Section 6.1: Load results for post-processing and analysis
 #
+
+# %% [markdown]
+# For the next sections it is required to have the experiment results previuosly executed.
+# If you are using the generated files from the experiment then change `LOAD_FROM_FILE` variable to `True` and make sure the files are located in the same directory as this notebook under the `results` folder.
+#
+
 
 # %%
 def load_results(results_dir: Path) -> list[ExperimentResult]:
@@ -1142,6 +1177,10 @@ else:
 # ### SECTION 7.1: Build the analysis DataFrame
 #
 
+# %% [markdown]
+# For a correct analysis first we are going to convert the results into a pandas DataFrame. See `results_to_dataframe` function for more details.
+#
+
 # %%
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -1154,7 +1193,7 @@ from matplotlib.patches import Patch
 CORRECT_F1_THRESHOLD = 0.5
 
 
-def results_to_frame(results: list[ExperimentResult]) -> pd.DataFrame:
+def results_to_dataframe(results: list[ExperimentResult]) -> pd.DataFrame:
     """Turn the experiment records into the table the whole analysis reads from.
 
     Everything below this point becomes column arithmetic instead of nested
@@ -1213,7 +1252,7 @@ def model_order(frame: pd.DataFrame) -> list[str]:
 
 
 def seed_order(frame: pd.DataFrame) -> list[int]:
-    """Seeds present in the data."""
+    """This function simply retrieves the sorted seeds present in the data."""
     return sorted(int(seed) for seed in frame["seed"].unique())
 
 
@@ -1264,17 +1303,17 @@ def hydrate(frame: pd.DataFrame, dataset: Dataset) -> pd.DataFrame:
     """
     corpus = dataset.corpus
     questions = {question.id: question for question in dataset.get_questions()}
-
+    # Adding the columns for question text, gold answers, gold context, and retrieved context to the DataFrame.
     return frame.assign(
-        question=frame["question_id"].map(lambda qid: questions[qid].question),
-        gold_answers=frame["question_id"].map(lambda qid: questions[qid].answers),
+        question=frame["question_id"].map(lambda qid: questions[qid].question),  # type: ignore
+        gold_answers=frame["question_id"].map(lambda qid: questions[qid].answers),  # type: ignore
         gold_context=frame["question_id"].map(
-            lambda qid: corpus[questions[qid].context_id]
+            lambda qid: corpus[questions[qid].context_id]  # type: ignore
         ),
         # A plain run retrieved nothing, so its list is empty rather than
         # missing: "the model was given no passages" is a fact, not a gap.
         retrieved_context=frame["retrieved_ids"].map(
-            lambda ids: [corpus[doc_id] for doc_id in ids]
+            lambda ids: [corpus[doc_id] for doc_id in ids]  # type: ignore
         ),
     )
 
@@ -1310,6 +1349,17 @@ def _largest_ecdf_gap(
 # %% [markdown]
 # ### SECTION 7.2: Plotting functions for analysis
 #
+
+# %% [markdown]
+# The class `Plot` is used to create the different plots for visualizing and analyzing the results of the experiments.
+#
+# - plot_metric_by_config
+# - plot_retrieval_hit_rate
+# - plot_similarity_distribution
+# - plot_similarity_ecdf
+# - plot_token_cost
+#
+
 
 # %%
 class Plot:
@@ -1880,14 +1930,14 @@ def summary_table(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def grounding_breakdown(frame: pd.DataFrame) -> pd.DataFrame:
-    """Cross-tab of "copied from the context" against "answered correctly".
+    """Cross-tab of "supported by the context" against "answered correctly".
 
     `supported_by_source` on its own says whether the answer text appears in
     the retrieved documents - that is copying, not correctness. Crossed with
     F1 it separates the two failure modes, which have different fixes:
 
-      copied + wrong     -> the retrieved passage was misread or was a distractor
-      not copied + wrong -> the model ignored the context and invented an answer
+      supported + wrong     -> the retrieved passage was misread or was a distractor
+      not supported + wrong -> the model ignored the context and invented an answer
 
     Only RAG answers that were actually given are counted. `scored` and
     `declined` are repeated on every row on purpose: `share` is out of the
@@ -1902,14 +1952,14 @@ def grounding_breakdown(frame: pd.DataFrame) -> pd.DataFrame:
 
     # Safe after dropna, and it turns the nullable boolean into a plain one
     # so the quadrant lookup below matches on real True / False.
-    scored = scored.assign(copied=scored["supported_by_source"].astype(bool))
+    scored = scored.assign(supported=scored["supported_by_source"].astype(bool))
 
-    counts = scored.groupby(["llm_model", "copied", "correct"], observed=True).size()
+    counts = scored.groupby(["llm_model", "supported", "correct"], observed=True).size()
     # Give every model all four quadrants, including the ones with no cases:
     # a zero in "invented (hallucination)" is a result worth showing.
     quadrants = pd.MultiIndex.from_product(
         [sorted(scored["llm_model"].unique()), [True, False], [True, False]],
-        names=["llm_model", "copied", "correct"],
+        names=["llm_model", "supported", "correct"],
     )
     table = counts.reindex(quadrants, fill_value=0).rename("n").reset_index()
 
@@ -1919,11 +1969,11 @@ def grounding_breakdown(frame: pd.DataFrame) -> pd.DataFrame:
     table["declined"] = table["llm_model"].map(n_attempted - n_scored)
     table["share"] = (table["n"] / table["scored"]).round(3)
     table["failure_mode"] = [
-        GROUNDING_MEANING[(copied, correct)]
-        for copied, correct in zip(table["copied"], table["correct"])
+        GROUNDING_MEANING[(supported, correct)]
+        for supported, correct in zip(table["supported"], table["correct"])
     ]
 
-    return table.set_index(["llm_model", "copied", "correct"])[
+    return table.set_index(["llm_model", "supported", "correct"])[
         ["n", "share", "scored", "declined", "failure_mode"]
     ]
 
@@ -1941,14 +1991,21 @@ def _require_hydrated(frame: pd.DataFrame) -> None:
 
 
 def _snippet(passages: list[str], width: int = 240) -> str:
-    """First retrieved passage, trimmed to something quotable."""
+    """First retrieved passage, trimmed to something quotable.
+
+    The trim is for the table only - the untruncated passages stay in
+    `retrieved_context`, so a quote for the report is always available as
+    `frame.loc[index, "retrieved_context"][0]`.
+    """
     if not passages:
         return ""
     text = " ".join(passages[0].split())
     return text if len(text) <= width else text[: width - 1] + "…"
 
 
-def find_failure_examples(frame: pd.DataFrame, n: int = 5) -> pd.DataFrame:
+def find_failure_examples(
+    frame: pd.DataFrame, n: int = 5, snippet_width: int = 240
+) -> pd.DataFrame:
     """Hallucination candidates for the report: answers invented for
     questions that have no answer (the system did not decline).
 
@@ -1958,7 +2015,9 @@ def find_failure_examples(frame: pd.DataFrame, n: int = 5) -> pd.DataFrame:
     """
     _require_hydrated(frame)
     failures = frame[~frame["is_answerable"] & ~frame["declined"]].copy()
-    failures["top_context"] = failures["retrieved_context"].map(_snippet)
+    failures["top_context"] = failures["retrieved_context"].map(
+        lambda passages: _snippet(passages, snippet_width)  # type: ignore
+    )
     # A plain run retrieved nothing, so its row can be reported but not
     # diagnosed. Sort those last so `head` does not spend every slot on rows
     # whose top_context is blank.
@@ -1976,7 +2035,9 @@ def find_failure_examples(frame: pd.DataFrame, n: int = 5) -> pd.DataFrame:
     return failures[columns].head(n)
 
 
-def find_wrong_answer_examples(frame: pd.DataFrame, n: int = 5) -> pd.DataFrame:
+def find_wrong_answer_examples(
+    frame: pd.DataFrame, n: int = 5, snippet_width: int = 240
+) -> pd.DataFrame:
     """Answerable questions the model answered anyway, and got wrong.
 
     The complement of `find_failure_examples`, and the one that carries the
@@ -1992,7 +2053,9 @@ def find_wrong_answer_examples(frame: pd.DataFrame, n: int = 5) -> pd.DataFrame:
     wrong = frame[
         frame["is_answerable"] & ~frame["declined"] & ~frame["correct"]
     ].copy()
-    wrong["top_context"] = wrong["retrieved_context"].map(_snippet)
+    wrong["top_context"] = wrong["retrieved_context"].map(
+        lambda passages: _snippet(passages, snippet_width)  # type: ignore
+    )
     wrong = wrong.sort_values("retrieval_hit", ascending=False, na_position="last")
     columns = [
         "llm_model",
@@ -2072,9 +2135,7 @@ def cost_table(frame: pd.DataFrame) -> pd.DataFrame:
     )
 
     baseline = table.xs("plain", level="config")["total"]
-    table["vs_plain"] = [
-        total / baseline[model] for (model, _), total in table["total"].items()
-    ]
+    table["vs_plain"] = table["total"].div(baseline, level="llm_model")
     # Quality per thousand tokens: the trade-off the report has to argue.
     table["f1_per_1k"] = table["F1"] / table["total"] * 1000
 
@@ -2097,7 +2158,7 @@ def cost_table(frame: pd.DataFrame) -> pd.DataFrame:
 #
 
 # %%
-results_frame = results_to_frame(results)
+results_frame = results_to_dataframe(results)
 print(
     f"{len(results_frame)} records | models: {model_order(results_frame)} "
     f"| configs: {config_order(results_frame)} | seeds: {seed_order(results_frame)}"
@@ -2109,8 +2170,40 @@ print(
 results_frame = hydrate(results_frame, Dataset())
 print(f"hydrated columns: {[c for c in HYDRATED_COLUMNS]}")
 
+# pandas truncates object columns at 50 characters by default, which cuts
+# the questions and answers in the example tables below mid-sentence. The
+# passages are trimmed deliberately by `_snippet`, so let the display show
+# whatever a column actually holds.
+pd.set_option("display.max_colwidth", None)
+
 # %% [markdown]
 # ### SECTION 8.1: Summary of every metric in the brief
+#
+
+# %% [markdown]
+# ### Summary Table
+#
+# #### Evaluation Metrics
+#
+# - **EM**: Exact Match. The fraction of answers that exactly match the reference answers.
+# - **F1**: F1 score. The harmonic mean of precision and recall for the model's answers.
+#
+# #### Retrieval and Context Metrics
+#
+# The following columns evaluate the performance of the retriever. Making them identical for both models.
+#
+# - **hit**: Retrieval Hit rate. The fraction of questions whose own source paragraph was among the `k` passages from the retriever.
+# - **in_ctx**: In Context. Measures how many of the questions were supported by the retrieved contexts.
+#
+# #### Decline Metrics
+#
+# - **decline_P**: Precision. How often a decline was justified,
+# - **decline_R**: Recall. How many of the unanswerable questions the model actually declined.
+#
+# #### Latency and Token Metrics
+#
+# - **lat_s**: Latency in seconds. How long the model took to respond.
+# - **tokens**: Number of tokens processed by the model.
 #
 
 # %%
@@ -2118,6 +2211,29 @@ summary_table(results_frame)
 
 # %% [markdown]
 # ### SECTION 8.2: Where the grounded answers went wrong
+#
+
+# %% [markdown]
+# ### Grounded breakdown table
+#
+# `supported` asks whether the answer text appears in the retrieved passages, and `correct` asks whether it was right.
+# `share` is `n / scored`: the fraction of the answers a model actually **gave** — declines are excluded, since there is nothing to look for in the context when the model refused to answer.
+#
+# What a high `share` means in each quadrant:
+#
+# | Failure mode             | A high share means                                                     | Where the fix belongs                                 |
+# | ------------------------ | ---------------------------------------------------------------------- | ----------------------------------------------------- |
+# | grounded and right       | the pipeline worked end to end                                         | —                                                     |
+# | copied the wrong passage | the model picked the wrong passage from the ones it got                | retrieval: better ranking, or a smaller `k`           |
+# | right but reworded       | the answer was correct but paraphrased, so token-F1 scored it as wrong | the metric, not the system — these are false failures |
+# | invented (hallucination) | the model ignored the context it was given                             | the model or the prompt                               |
+#
+# **Shares are not comparable across models on their own.** They are computed out of
+# the answers each model chose to give, and the two models did not choose alike:
+# `meta/muse-glimmer-30b` declined 528 of its 900 RAG attempts against 261 for
+# `gpt-5.4-mini`. A model that answers rarely and only when confident will show a
+# high "grounded and right" share for that reason alone, so `share` has to be read
+# next to `scored` and `declined`.
 #
 
 # %%
@@ -2148,8 +2264,12 @@ plot.plot_token_cost(results_frame)
 # ### SECTION 8.4: Concrete failures to quote in the report
 #
 
+# %% [markdown]
+# This table shows a sample of the failed answers from the evaluation results.
+#
+
 # %%
-find_failure_examples(results_frame)
+find_failure_examples(results_frame, n=15)
 
 # %% [markdown]
 # ### SECTION 8.5: Answerable questions the model still got wrong
