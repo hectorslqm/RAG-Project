@@ -1,0 +1,13 @@
+# Dependencies for coursework_rag.ipynb
+# Install with: pip install -r requirements.txt
+
+datasets==5.0.1
+matplotlib==3.11.1
+numpy==2.5.2
+openai==3.6.0
+pandas==3.0.5
+python-dotenv==1.2.3
+sentence-transformers==6.0.0
+
+# Needed only to run the notebook as a Jupyter kernel
+ipykernel==7.3.0
